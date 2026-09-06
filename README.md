@@ -45,7 +45,8 @@ même cerveau.
 - [x] Réflexes scriptés (socle nerveux local)
 - [x] Couche IA branchée (compréhension + décision)
 - [x] Cerveau Python déporté - squelette (`brain/`, FastAPI + WebSocket), prêt pour Railway
-- [ ] Brancher le corps 3D sur le cerveau serveur (WebSocket)
+- [x] Corps 3D piloté par le cerveau serveur (WebSocket)
+- [x] Fiches pièces cliquables + catalogue éditable (BOM) + upload photo/fiche technique
 - [ ] Couche IA côté serveur (SEAM `interpret_ai`, clé LLM en variable d'env)
 - [ ] Mémoire persistante (le bras te reconnaît d'une visite à l'autre)
 - [ ] Répertoire de gestes enrichi (pointer, suivre une trajectoire, saisir)
@@ -80,4 +81,24 @@ La config est dans `railway.json` (racine).
    `uvicorn brain.main:app`. La sonde `/health` confirme le démarrage.
 3. Onglet **Settings -> Networking -> Generate Domain** pour l'URL publique.
 4. À chaque `git push`, Railway redéploie tout seul.
+
+### Persistance du catalogue (photos, fiches, upgrades)
+
+Le catalogue des pièces et les fichiers téléversés vivent dans `DATA_DIR`
+(défaut `/data`). Sans stockage persistant, ils repartent du catalogue de
+référence à chaque redéploiement. Pour les conserver :
+
+1. Service Railway -> **Settings -> Volumes -> Add Volume**, point de montage `/data`.
+2. C'est tout : le serveur écrit déjà dans `/data`. (Variable `DATA_DIR`
+   personnalisable si tu montes ailleurs.)
+
+## Les pièces (catalogue modulable)
+
+Dans l'app 3D : **clique une pièce du bras** pour ouvrir sa fiche (rôle, à
+imprimer ou acheter, composants, fils/connecteurs, photo, fiche technique),
+ou le bouton **Pièces** pour le catalogue complet. Servi par le cerveau, tout
+est **éditable** : modifier une pièce, téléverser une photo (zoom) et un PDF de
+fiche technique, ajouter une nouvelle pièce (upgrade). L'API : `GET/POST/PUT/DELETE
+/api/parts`, `POST /api/parts/{id}/upload`. Ouvert hors serveur (artifact,
+fichier local), le catalogue de référence s'affiche en lecture seule.
 

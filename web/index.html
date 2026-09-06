@@ -118,6 +118,67 @@
   .talk button:hover{filter:brightness(1.08)}
   .talk button:active{transform:translateY(1px)}
 
+  /* Fiche pièce / catalogue */
+  .sheet{position:fixed;top:0;left:0;bottom:0;z-index:5;width:min(384px,94vw);
+    background:var(--panel-solid);border-right:1px solid var(--line-strong);
+    box-shadow:24px 0 70px rgba(0,0,0,.55);transform:translateX(-102%);
+    transition:transform .28s cubic-bezier(.2,.7,.2,1);display:flex;flex-direction:column;overflow:hidden}
+  .sheet.open{transform:none}
+  .sheet-head{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .sheet-head h2{font-family:var(--disp);font-size:16px;letter-spacing:.05em;margin:0;flex:1;text-wrap:balance;line-height:1.2}
+  .sheet-head .x{background:none;border:1px solid var(--line-strong);color:var(--muted);border-radius:8px;
+    width:30px;height:30px;flex:0 0 auto;cursor:pointer;font-size:15px;line-height:1}
+  .sheet-head .x:hover{color:var(--text);border-color:var(--cyan)}
+  .sheet-body{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+  .cat{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+    padding:4px 9px;border-radius:99px;border:1px solid var(--line-strong);width:max-content}
+  .cat.impression{color:var(--cyan);border-color:rgba(52,211,238,.4)}
+  .cat.achat{color:var(--amber);border-color:rgba(245,166,35,.4)}
+  .cat.electronique{color:var(--green);border-color:rgba(56,224,138,.4)}
+  .zoom{width:100%;aspect-ratio:4/3;border-radius:12px;border:1px solid var(--line);background:#0a0d13;
+    display:grid;place-items:center;overflow:hidden}
+  .zoom img{width:100%;height:100%;object-fit:contain}
+  .zoom .ph{color:var(--dim);font-family:var(--mono);font-size:12px;text-align:center;padding:14px;line-height:1.5}
+  .blk h3{font-family:var(--disp);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .blk p{margin:0;font-size:13.5px;line-height:1.55}
+  .kvgrid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+  .kvgrid .k{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;align-self:center}
+  .blk ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+  .blk li{font-size:13px;display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+  .blk li:last-child{border-bottom:none}
+  .blk li .q{font-family:var(--mono);color:var(--muted);flex:0 0 auto}
+  .blk li .w{color:var(--dim);font-size:12px}
+  .dl{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--cyan);text-decoration:none;
+    border:1px solid rgba(52,211,238,.35);border-radius:9px;padding:8px 12px;width:max-content}
+  .dl:hover{background:rgba(52,211,238,.1)}
+  .sheet-foot{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+  .sheet-foot button{flex:1;font-family:var(--sans);font-size:13px;font-weight:500;border-radius:9px;padding:10px;cursor:pointer;
+    background:rgba(255,255,255,.04);border:1px solid var(--line-strong);color:var(--text)}
+  .sheet-foot button:hover{border-color:var(--cyan)}
+  .sheet-foot button.pri{background:var(--cyan);color:var(--bg);border:none;font-weight:600}
+  .sheet-foot button.danger:hover{border-color:var(--red);color:var(--red)}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  .field input,.field textarea,.field select{background:rgba(0,0,0,.28);border:1px solid var(--line-strong);
+    border-radius:8px;padding:8px 10px;color:var(--text);font:13px var(--sans);outline:none;width:100%}
+  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--cyan)}
+  .field textarea{resize:vertical;min-height:54px;font-family:var(--mono);font-size:12px;line-height:1.5}
+  .field .hlp{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+  .uprow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    border:1px solid var(--line-strong);border-radius:8px;padding:8px 11px;cursor:pointer;color:var(--text)}
+  .filebtn:hover{border-color:var(--cyan)}
+  .filebtn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .upst{font-size:11px;color:var(--dim);font-family:var(--mono)}
+  .plist{display:flex;flex-direction:column;gap:6px}
+  .pitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+    cursor:pointer;background:rgba(255,255,255,.02);text-align:left}
+  .pitem:hover{border-color:var(--cyan);background:rgba(52,211,238,.06)}
+  .pitem .nm{flex:1;font-size:13px}
+  .pitem .cd{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+  .ronote{font-size:12px;color:var(--amber);font-family:var(--mono);background:rgba(245,166,35,.08);
+    border:1px solid rgba(245,166,35,.3);border-radius:8px;padding:9px 11px;line-height:1.5}
+
   .hint{position:fixed;left:20px;bottom:22px;z-index:2;font-family:var(--mono);font-size:11px;
     color:var(--dim);max-width:220px;line-height:1.5;pointer-events:none}
   @media (max-width:900px){
@@ -170,6 +231,7 @@
     <button class="act" data-cmd="greet"><span class="ic">👋</span>Salue-le</button>
     <button class="act" data-cmd="ask"><span class="ic">❓</span>Pose une question</button>
     <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
+    <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <span class="aichip" id="aiChip">IA…</span>
     <div class="toggle">autonomie<div class="sw on" id="autoSw"><i></i></div></div>
@@ -180,7 +242,9 @@
   </div>
 </div>
 
-<div class="hint">Glisse pour tourner autour · molette pour zoomer · bouge la souris, il te suit du regard</div>
+<div class="hint">Glisse pour tourner · molette pour zoomer · clique une pièce pour sa fiche</div>
+
+<div class="sheet" id="sheet"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -241,55 +305,55 @@ const matMetal = new THREE.MeshStandardMaterial({color:0x9aa6b8, metalness:0.9, 
 const matDark  = new THREE.MeshStandardMaterial({color:0x2a333f, metalness:0.7, roughness:0.5});
 const matAccent= new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.3, roughness:0.4});
 
-function segment(len, r0, r1){
+function segment(len, r0, r1, id){
   const g = new THREE.Group();
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 22), matMetal);
-  m.position.y = len/2; g.add(m);
+  m.position.y = len/2; if(id) m.userData.partId = id; g.add(m);
   return g;
 }
-function joint(r){ return new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), matDark); }
+function joint(r, id){ const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), matDark); if(id) m.userData.partId = id; return m; }
 function ring(r){ const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 10, 28), matAccent); t.rotation.x = Math.PI/2; return t; }
 
 const root = new THREE.Group(); scene.add(root);
 
 // Socle
 const base = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.4, 32), matDark);
-base.position.y = 0.2; root.add(base);
+base.position.y = 0.2; base.userData.partId = 'base'; root.add(base);
 base.add(ring(1.0));
 
 // Tourelle (yaw)
 const yawG = new THREE.Group(); yawG.position.y = 0.4; root.add(yawG);
 const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.85,0.55,24), matMetal);
-turret.position.y = 0.27; yawG.add(turret);
+turret.position.y = 0.27; turret.userData.partId = 'yaw'; yawG.add(turret);
 
 // Épaule (pitch)
 const shoulderG = new THREE.Group(); shoulderG.position.y = 0.62; yawG.add(shoulderG);
-shoulderG.add(joint(0.42));
-const upper = segment(2.15, 0.34, 0.26); shoulderG.add(upper);
+shoulderG.add(joint(0.42, 'shoulder'));
+const upper = segment(2.15, 0.34, 0.26, 'upper'); shoulderG.add(upper);
 
 // Coude (pitch)
 const elbowG = new THREE.Group(); elbowG.position.y = 2.15; upper.add(elbowG);
-elbowG.add(joint(0.34));
-const fore = segment(1.9, 0.27, 0.2); elbowG.add(fore);
+elbowG.add(joint(0.34, 'elbow'));
+const fore = segment(1.9, 0.27, 0.2, 'forearm'); elbowG.add(fore);
 
 // Poignet (pitch/yaw/roll) = base de la "tête"
 const wristG = new THREE.Group(); wristG.position.y = 1.9; wristG.rotation.order = 'YXZ'; fore.add(wristG);
-wristG.add(joint(0.26));
+wristG.add(joint(0.26, 'wrist'));
 
 // Tête expressive (caméra + œil)
 const headG = new THREE.Group(); wristG.add(headG);
 const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.34,0.62,20), matMetal);
-housing.position.y = 0.36; headG.add(housing);
+housing.position.y = 0.36; housing.userData.partId = 'head'; headG.add(housing);
 // "oreilles"/capteurs
 [-1,1].forEach(s=>{
   const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.34,10), matDark);
-  ear.position.set(s*0.3, 0.42, 0); ear.rotation.z = s*0.5; headG.add(ear);
+  ear.position.set(s*0.3, 0.42, 0); ear.rotation.z = s*0.5; ear.userData.partId = 'head'; headG.add(ear);
 });
 const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.2,0.045,10,24), matDark);
-bezel.position.y = 0.66; bezel.rotation.x = Math.PI/2; headG.add(bezel);
+bezel.position.y = 0.66; bezel.rotation.x = Math.PI/2; bezel.userData.partId = 'head'; headG.add(bezel);
 const eyeMat = new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:1.3, roughness:0.3});
 const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), eyeMat);
-eye.position.y = 0.7; headG.add(eye);
+eye.position.y = 0.7; eye.userData.partId = 'eye'; headG.add(eye);
 const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({map:radialTexture(0x34d3ee), color:0x34d3ee, transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending}));
 glowSpr.scale.set(1.1,1.1,1); glowSpr.position.y = 0.7; headG.add(glowSpr);
 const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.y = 0.7; headG.add(eyeLight);
@@ -687,7 +751,9 @@ canvas.addEventListener('pointermove', e=>{
 function dt0(){ return 0.004; }
 canvas.addEventListener('pointerup', e=>{
   dragging=false; canvas.classList.remove('dragging');
-  if(moved < 6){ // clic simple = on le sollicite
+  if(moved < 6){ // clic simple
+    const pid = pickPart(e.clientX, e.clientY);
+    if(pid){ openPartSheet(pid); return; }   // clic sur une pièce -> sa fiche
     if(server.connected){ serverSend({type:'poke'}); }
     else { wake(true); log('reflexe','sollicité par contact'); setState('attentive'); brain.boredom = 0; }
   }
@@ -701,6 +767,7 @@ canvas.addEventListener('wheel', e=>{
 document.querySelectorAll('button.act').forEach(b=>{
   b.addEventListener('click', ()=>{
     const c = b.dataset.cmd;
+    if(c==='parts'){ openCatalogue(); return; }
     if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
       if(c==='greet') serverSend({type:'say', text:'bonjour'});
       else if(c==='ask') serverSend({type:'say', text:'une question ?'});
@@ -725,7 +792,194 @@ function send(){ const v=sayIn.value; if(!v.trim()) return; interpret(v); sayIn.
 document.getElementById('sayBtn').addEventListener('click', send);
 sayIn.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
 
+/* ---------- Pièces : catalogue, fiche détaillée, éditeur ---------- */
+const sheetEl = document.getElementById('sheet');
+const raycaster = new THREE.Raycaster();
+let CATALOG = [];
+let catalogEditable = false;   // vrai si le backend (cerveau) répond
+
+// Catalogue de repli (lecture seule) pour l'artifact / le fichier local.
+const SEED_FALLBACK = [
+  {id:'base',mesh:'base',name:'Socle',category:'impression',role:"Base stable qui supporte tout le bras et loge le roulement de rotation.",components:[{name:'Roulement 608ZZ',qty:1}]},
+  {id:'yaw',mesh:'yaw',name:'Plateau tournant (rotation base)',category:'impression',role:"Fait pivoter tout le bras à gauche/droite (yaw).",components:[{name:'Servo MG996R',qty:1}]},
+  {id:'shoulder',mesh:'shoulder',name:'Articulation épaule',category:'impression',role:"Lève et abaisse le bras supérieur.",components:[{name:'Servo MG996R',qty:1}]},
+  {id:'upper',mesh:'upper',name:'Bras supérieur',category:'impression',role:"Segment entre l'épaule et le coude."},
+  {id:'elbow',mesh:'elbow',name:'Articulation coude',category:'impression',role:"Plie l'avant-bras.",components:[{name:'Servo MG996R',qty:1}]},
+  {id:'forearm',mesh:'forearm',name:'Avant-bras',category:'impression',role:"Segment entre le coude et le poignet."},
+  {id:'wrist',mesh:'wrist',name:'Poignet (pan/tilt)',category:'impression',role:"Oriente la tête : produit les hochements oui/non.",components:[{name:'Micro-servo SG90',qty:2}]},
+  {id:'head',mesh:'head',name:'Tête / support caméra',category:'impression',role:"Boîtier expressif qui porte l'œil."},
+  {id:'eye',mesh:'eye',name:'Œil (caméra + LED)',category:'electronique',role:"Caméra (vision) + anneau LED qui exprime l'humeur.",components:[{name:'Anneau LED WS2812',qty:1}]},
+  {id:'controller',mesh:null,name:'Contrôleur ESP32',category:'electronique',role:"Cerveau embarqué Wi-Fi, pilote les servos via le driver."},
+  {id:'driver',mesh:null,name:'Driver servos PCA9685',category:'electronique',role:"Pilote jusqu'à 16 servos en I2C."},
+  {id:'psu',mesh:null,name:'Alimentation 5-6V',category:'electronique',role:"Fournit le courant des servos (≥5A)."},
+  {id:'wiring',mesh:null,name:'Câblage',category:'achat',role:"Rallonges servo, fils Dupont, gaine."},
+  {id:'connectors',mesh:null,name:'Connecteurs & interrupteur',category:'achat',role:"JST, bornier, interrupteur, prise DC."},
+  {id:'hardware',mesh:null,name:'Visserie & roulements',category:'achat',role:"Vis M3, écrous, roulements 608ZZ, inserts."}
+];
+
+async function partsInit(){
+  try{
+    const r = await fetch('/api/parts', {cache:'no-store'});
+    if(r.ok){ CATALOG = await r.json(); catalogEditable = true; return; }
+  }catch(_){}
+  CATALOG = SEED_FALLBACK.map(p=>({...p}));
+  catalogEditable = false;
+}
+function partById(id){ return CATALOG.find(p=>p.id===id); }
+
+function pickPart(x,y){
+  const ndc = new THREE.Vector2((x/window.innerWidth)*2-1, -(y/window.innerHeight)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  const meshes=[]; root.traverse(o=>{ if(o.isMesh && o.userData.partId) meshes.push(o); });
+  const hit = raycaster.intersectObjects(meshes, false)[0];
+  return hit ? hit.object.userData.partId : null;
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
+function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
+function closeSheet(){ sheetEl.classList.remove('open'); }
+
+function openCatalogue(){
+  const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
+  let h = `<div class="sheet-head"><h2>Catalogue des pièces</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
+  if(!catalogEditable) h += `<div class="ronote">Lecture seule ici. Ouvre l'app servie par le cerveau (Railway) pour éditer et téléverser photos / fiches techniques.</div>`;
+  for(const [cat,label] of groups){
+    const items = CATALOG.filter(p=>p.category===cat);
+    if(!items.length) continue;
+    h += `<div class="blk"><h3>${label}</h3><div class="plist">`;
+    for(const p of items)
+      h += `<button class="pitem" data-open="${esc(p.id)}"><span class="cd" style="background:${catColor(cat)}"></span><span class="nm">${esc(p.name)}</span>${p.mesh?'<span class="w">3D</span>':''}</button>`;
+    h += `</div></div>`;
+  }
+  if(catalogEditable) h += `<div class="blk"><button class="filebtn" data-act="new" style="width:100%;justify-content:center">➕ Ajouter une pièce (upgrade)</button></div>`;
+  h += `</div>`;
+  sheetEl.innerHTML = h; sheetEl.classList.add('open');
+}
+
+function openPartSheet(id){ const p=partById(id); if(!p){ openCatalogue(); return; } renderView(p); sheetEl.classList.add('open'); }
+
+function kvRows(o){
+  if(!o || typeof o!=='object') return '';
+  const rows = Object.entries(o).map(([k,v])=>`<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('');
+  return rows ? `<div class="kvgrid">${rows}</div>` : '';
+}
+function listRows(arr, kind){
+  if(!Array.isArray(arr)||!arr.length) return '';
+  return '<ul>'+arr.map(it=> kind==='comp'
+    ? `<li><span>${esc(it.name)}</span><span class="q">×${esc(it.qty==null?1:it.qty)}</span></li>`
+    : `<li><span>${esc(it.from)} → ${esc(it.to)}</span><span class="w">${esc(it.type||'')}</span></li>`
+  ).join('')+'</ul>';
+}
+
+function renderView(p){
+  const cat=p.category||'achat';
+  let b = `<div class="sheet-head"><h2>${esc(p.name)}</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
+  b += `<span class="cat ${cat}">${CAT_LABEL[cat]||cat}</span>`;
+  b += `<div class="zoom">`+(p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.name)}">`:`<div class="ph">Pas encore de photo${catalogEditable?'<br>« Modifier » pour en ajouter une':''}</div>`)+`</div>`;
+  if(p.role) b += `<div class="blk"><p>${esc(p.role)}</p></div>`;
+  const specs=kvRows(p.specs); if(specs) b += `<div class="blk"><h3>Caractéristiques</h3>${specs}</div>`;
+  const pr=p.print?kvRows(p.print):''; if(pr) b += `<div class="blk"><h3>Impression 3D</h3>${pr}</div>`;
+  const comp=listRows(p.components,'comp'); if(comp) b += `<div class="blk"><h3>Composants</h3>${comp}</div>`;
+  const wires=listRows(p.wires,'wire'); if(wires) b += `<div class="blk"><h3>Fils & connecteurs</h3>${wires}</div>`;
+  const meta={}; if(p.qty) meta['Quantité']=p.qty; if(p.price && p.price!=='~') meta['Prix indicatif']=p.price;
+  const mr=kvRows(meta); if(mr) b += `<div class="blk">${mr}</div>`;
+  if(p.datasheet) b += `<div class="blk"><a class="dl" href="${esc(p.datasheet)}" target="_blank" rel="noopener">📄 Fiche technique (PDF)</a></div>`;
+  if(p.notes) b += `<div class="blk"><h3>Notes</h3><p>${esc(p.notes)}</p></div>`;
+  b += `</div><div class="sheet-foot"><button data-act="catalogue">Catalogue</button>`+
+       (catalogEditable?`<button class="pri" data-open-edit="${esc(p.id)}">Modifier</button>`:'')+`</div>`;
+  sheetEl.innerHTML = b;
+}
+
+function specsToText(o){ return o&&typeof o==='object'?Object.entries(o).map(([k,v])=>`${k}: ${v}`).join('\n'):''; }
+function compToText(a){ return Array.isArray(a)?a.map(i=>`${i.name} | ${i.qty==null?1:i.qty}`).join('\n'):''; }
+function wiresToText(a){ return Array.isArray(a)?a.map(i=>`${i.from} -> ${i.to} | ${i.type||''}`).join('\n'):''; }
+function textToSpecs(t){ const o={}; (t||'').split('\n').forEach(l=>{ const i=l.indexOf(':'); if(i>0){ const k=l.slice(0,i).trim(), v=l.slice(i+1).trim(); if(k) o[k]=v; } }); return o; }
+function textToComp(t){ return (t||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [n,q]=l.split('|'); return {name:(n||'').trim(), qty:(q||'1').trim()}; }); }
+function textToWires(t){ return (t||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [c,tp]=l.split('|'); const [f,to]=(c||'').split('->'); return {from:(f||'').trim(), to:(to||'').trim(), type:(tp||'').trim()}; }); }
+
+function renderEdit(p){
+  const cat=p.category||'achat';
+  const opt=(v,l)=>`<option value="${v}"${cat===v?' selected':''}>${l}</option>`;
+  let b = `<div class="sheet-head"><h2>Modifier</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
+  b += `<div class="field"><label>Nom</label><input id="f_name" value="${esc(p.name||'')}"></div>`;
+  b += `<div class="field"><label>Catégorie</label><select id="f_cat">${opt('impression','À imprimer 3D')}${opt('achat','À acheter')}${opt('electronique','Électronique')}</select></div>`;
+  b += `<div class="field"><label>Rôle</label><textarea id="f_role">${esc(p.role||'')}</textarea></div>`;
+  b += `<div class="uprow"><div class="field" style="flex:1"><label>Quantité</label><input id="f_qty" value="${esc(p.qty==null?1:p.qty)}"></div><div class="field" style="flex:1"><label>Prix indicatif</label><input id="f_price" value="${esc(p.price&&p.price!=='~'?p.price:'')}"></div></div>`;
+  b += `<div class="field"><label>Caractéristiques</label><textarea id="f_specs">${esc(specsToText(p.specs))}</textarea><span class="hlp">une par ligne — clé: valeur</span></div>`;
+  b += `<div class="field"><label>Composants</label><textarea id="f_comp">${esc(compToText(p.components))}</textarea><span class="hlp">nom | quantité</span></div>`;
+  b += `<div class="field"><label>Fils & connecteurs</label><textarea id="f_wires">${esc(wiresToText(p.wires))}</textarea><span class="hlp">de -&gt; vers | type</span></div>`;
+  b += `<div class="field"><label>Notes</label><textarea id="f_notes">${esc(p.notes||'')}</textarea></div>`;
+  b += `<div class="field"><label>Photo (zoom de la pièce)</label><div class="uprow"><label class="filebtn">📷 Choisir une image<input type="file" accept="image/*" id="f_photo"></label><span class="upst" id="st_photo">${p.photo?'photo présente ✓':'aucune'}</span></div></div>`;
+  b += `<div class="field"><label>Fiche technique (PDF)</label><div class="uprow"><label class="filebtn">📄 Choisir un PDF<input type="file" accept="application/pdf" id="f_ds"></label><span class="upst" id="st_ds">${p.datasheet?'PDF présent ✓':'aucun'}</span></div></div>`;
+  b += `</div><div class="sheet-foot"><button class="danger" data-act="del" data-id="${esc(p.id)}">Supprimer</button><button class="pri" data-act="save" data-id="${esc(p.id)}">Enregistrer</button></div>`;
+  sheetEl.innerHTML = b;
+  const fp=document.getElementById('f_photo'); if(fp) fp.onchange=()=>uploadFile(p.id,'photo',fp,'st_photo');
+  const fd=document.getElementById('f_ds'); if(fd) fd.onchange=()=>uploadFile(p.id,'datasheet',fd,'st_ds');
+}
+
+function collectEdit(id){
+  const v=x=>{ const el=document.getElementById(x); return el?el.value:''; };
+  return { id, name:v('f_name'), category:v('f_cat'), role:v('f_role'),
+    qty:v('f_qty'), price:v('f_price')||'~', specs:textToSpecs(v('f_specs')),
+    components:textToComp(v('f_comp')), wires:textToWires(v('f_wires')), notes:v('f_notes') };
+}
+
+async function savePart(id){
+  const merged = {...(partById(id)||{}), ...collectEdit(id)};
+  if(catalogEditable){
+    try{
+      const r=await fetch('/api/parts/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(merged)});
+      if(r.ok){ const saved=await r.json(); const i=CATALOG.findIndex(p=>p.id===id); if(i>=0) CATALOG[i]=saved; else CATALOG.push(saved); renderView(saved); return; }
+    }catch(_){}
+  }
+  const i=CATALOG.findIndex(p=>p.id===id); if(i>=0) CATALOG[i]=merged; else CATALOG.push(merged);
+  renderView(merged);
+}
+
+async function uploadFile(id, kind, input, statusId){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const st=document.getElementById(statusId);
+  if(!catalogEditable){ if(st) st.textContent='backend requis (Railway)'; return; }
+  if(st) st.textContent='envoi...';
+  const fd=new FormData(); fd.append('kind',kind); fd.append('file',f);
+  try{
+    const r=await fetch('/api/parts/'+encodeURIComponent(id)+'/upload',{method:'POST',body:fd});
+    if(r.ok){ const {url}=await r.json(); const p=partById(id); if(p) p[kind]=url; if(st) st.textContent=(kind==='photo'?'photo':'PDF')+' envoyé ✓'; }
+    else if(st) st.textContent='erreur '+r.status;
+  }catch(_){ if(st) st.textContent='erreur réseau'; }
+}
+
+async function deletePart(id){
+  if(catalogEditable){ try{ await fetch('/api/parts/'+encodeURIComponent(id),{method:'DELETE'}); }catch(_){} }
+  CATALOG = CATALOG.filter(p=>p.id!==id);
+  openCatalogue();
+}
+
+async function newPart(){
+  const name = prompt('Nom de la nouvelle pièce (upgrade) ?'); if(!name) return;
+  let id = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || ('piece-'+Date.now());
+  if(partById(id)) id = id+'-'+Date.now().toString(36);
+  const part={id,name,category:'achat',role:'',qty:1,price:'~',specs:{},components:[],wires:[],notes:'',photo:null,datasheet:null};
+  if(catalogEditable){ try{ const r=await fetch('/api/parts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(part)}); if(r.ok){ CATALOG.push(await r.json()); } else CATALOG.push(part); }catch(_){ CATALOG.push(part); } }
+  else CATALOG.push(part);
+  renderEdit(part); sheetEl.classList.add('open');
+}
+
+sheetEl.addEventListener('click', e=>{
+  const t=e.target.closest('[data-act],[data-open],[data-open-edit]'); if(!t) return;
+  if(t.dataset.open){ openPartSheet(t.dataset.open); return; }
+  if(t.dataset.openEdit){ const p=partById(t.dataset.openEdit); if(p) renderEdit(p); return; }
+  const a=t.dataset.act;
+  if(a==='close') closeSheet();
+  else if(a==='catalogue') openCatalogue();
+  else if(a==='new') newPart();
+  else if(a==='save') savePart(t.dataset.id);
+  else if(a==='del'){ if(confirm('Supprimer cette pièce ?')) deletePart(t.dataset.id); }
+});
+
 /* ---------- Démarrage ---------- */
+partsInit();
 setState('idle');
 log('etat','systèmes en ligne');
 log('reflexe','calibration des articulations... ok');

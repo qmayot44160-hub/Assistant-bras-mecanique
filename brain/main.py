@@ -16,8 +16,8 @@ import asyncio
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 
 # Le corps 3D vit dans web/index.html, à la racine du repo (un niveau au-dessus).
 WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
@@ -25,9 +25,11 @@ WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
 try:
     # lancé depuis le dossier brain/  (uvicorn main:app)
     from brain import Brain
+    import catalog
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
+    from brain import catalog
 
 app = FastAPI(title="Cerveau ARIA")
 brain = Brain()
@@ -86,6 +88,65 @@ async def _start_loop() -> None:
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True, "state": brain.state, "awake": brain.awake}
+
+
+# --- Catalogue des pièces (BOM modulable) ---------------------------------
+@app.get("/api/parts")
+async def api_parts() -> list[dict]:
+    return catalog.load()
+
+
+@app.get("/api/parts/{pid}")
+async def api_part(pid: str) -> dict:
+    part = catalog.get(pid)
+    if not part:
+        raise HTTPException(404, "pièce inconnue")
+    return part
+
+
+@app.put("/api/parts/{pid}")
+async def api_part_put(pid: str, part: dict) -> dict:
+    part["id"] = pid
+    return catalog.upsert(part)
+
+
+@app.post("/api/parts")
+async def api_part_post(part: dict) -> dict:
+    if not str(part.get("id") or "").strip():
+        raise HTTPException(400, "id requis")
+    return catalog.upsert(part)
+
+
+@app.delete("/api/parts/{pid}")
+async def api_part_delete(pid: str) -> dict:
+    return {"deleted": catalog.delete(pid)}
+
+
+@app.post("/api/parts/{pid}/upload")
+async def api_upload(pid: str, kind: str = Form(...), file: UploadFile = File(...)) -> dict:
+    part = catalog.get(pid)
+    if not part:
+        raise HTTPException(404, "pièce inconnue")
+    if kind not in ("photo", "datasheet"):
+        raise HTTPException(400, "kind doit être 'photo' ou 'datasheet'")
+    data = await file.read()
+    if len(data) > 12 * 1024 * 1024:
+        raise HTTPException(413, "fichier trop lourd (>12 Mo)")
+    ext = Path(file.filename or "").suffix.lower()[:8] or (".pdf" if kind == "datasheet" else ".png")
+    safe = "".join(ch for ch in pid if ch.isalnum() or ch in "-_") or "part"
+    name = f"{safe}_{kind}{ext}"
+    (catalog.UPLOAD_DIR / name).write_bytes(data)
+    part[kind] = f"/api/files/{name}"
+    catalog.upsert(part)
+    return {"url": part[kind]}
+
+
+@app.get("/api/files/{name}")
+async def api_file(name: str) -> FileResponse:
+    dest = catalog.UPLOAD_DIR / Path(name).name  # empêche la traversée de dossier
+    if not dest.exists():
+        raise HTTPException(404, "fichier absent")
+    return FileResponse(dest)
 
 
 @app.websocket("/ws")
