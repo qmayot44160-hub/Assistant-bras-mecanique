@@ -32,21 +32,50 @@ même cerveau.
 - `web/index.html` - **prototype complet, un seul fichier autonome** : le bras 3D
   (Three.js), les réflexes, la machine à états, et la couche IA branchée sur Claude.
   S'ouvre dans n'importe quel navigateur. Hors ligne, il tourne en "réflexes seuls".
+- `brain/` - **squelette du cerveau serveur** (Python, FastAPI + WebSocket) : la
+  même logique en couches, déportée hors du navigateur. Émet des ordres abstraits
+  (état, geste, pensée) que n'importe quel corps exécute. Prêt à déployer sur Railway.
+  - `brain/brain.py` : la logique (réflexes, humeur, décisions, dialogue scripté avec un SEAM LLM)
+  - `brain/main.py` : le serveur WebSocket + une page de test live
+  - `brain/requirements.txt`, `brain/Procfile`, `brain/railway.json` : déploiement
 
 ## Feuille de route
 
 - [x] Corps 3D virtuel qui bouge seul et hoche la tête
 - [x] Réflexes scriptés (socle nerveux local)
 - [x] Couche IA branchée (compréhension + décision)
-- [ ] Cerveau Python déporté (`brain/`, FastAPI + WebSocket, hébergé sur Railway)
+- [x] Cerveau Python déporté - squelette (`brain/`, FastAPI + WebSocket), prêt pour Railway
+- [ ] Brancher le corps 3D sur le cerveau serveur (WebSocket)
+- [ ] Couche IA côté serveur (SEAM `interpret_ai`, clé LLM en variable d'env)
 - [ ] Mémoire persistante (le bras te reconnaît d'une visite à l'autre)
 - [ ] Répertoire de gestes enrichi (pointer, suivre une trajectoire, saisir)
 - [ ] Passage au vrai bras physique
 
-## Lancer le prototype
+## Lancer le prototype (corps 3D)
 
 Ouvre `web/index.html` dans un navigateur. Rien à installer.
 
 - Bouge la souris : le bras te suit du regard.
 - Glisse pour tourner autour, molette pour zoomer.
 - Parle-lui dans le champ du bas ; il répond par gestes.
+
+## Lancer le cerveau (localement)
+
+```bash
+cd brain
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+Puis ouvre http://localhost:8000 : une page de test montre le cerveau vivre et
+réagir. Le canal temps réel est sur `/ws`, la sonde de santé sur `/health`.
+
+## Déployer le cerveau sur Railway
+
+1. Railway -> **New Project -> Deploy from GitHub repo** -> `Assistant-bras-mecanique`.
+2. Dans les réglages du service, mettre **Root Directory = `brain`** (le code Python
+   est dans ce sous-dossier).
+3. Railway détecte Python, installe `requirements.txt` et lance la commande de
+   `railway.json`. La sonde `/health` confirme le démarrage.
+4. À chaque `git push`, Railway redéploie tout seul.
+
