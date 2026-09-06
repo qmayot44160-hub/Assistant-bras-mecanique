@@ -188,9 +188,87 @@
   }
   @media (max-width:900px) and (max-height:720px){ .brain{display:none} }
   :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  /* ============ DA JARVIS : HUD holographique ============ */
+  /* Cadre d'angles */
+  .fx-frame{position:fixed;inset:14px;z-index:1;pointer-events:none}
+  .fx-frame i{position:absolute;width:34px;height:34px;border:2px solid rgba(52,211,238,.45);filter:drop-shadow(0 0 6px rgba(52,211,238,.4))}
+  .fx-frame i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0}
+  .fx-frame i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0}
+  .fx-frame i:nth-child(3){bottom:0;right:0;border-left:0;border-top:0}
+  .fx-frame i:nth-child(4){bottom:0;left:0;border-right:0;border-top:0}
+  /* Scanline */
+  .fx-scan{position:fixed;left:0;right:0;top:0;height:2px;z-index:1;pointer-events:none;opacity:.5;
+    background:linear-gradient(90deg,transparent,rgba(52,211,238,.55),transparent);animation:scanmove 7s linear infinite}
+  @keyframes scanmove{0%{transform:translateY(-4px)}100%{transform:translateY(100vh)}}
+  /* Réticule décoratif */
+  .fx-reticle{position:fixed;left:50%;top:54%;transform:translate(-50%,-50%);z-index:1;pointer-events:none;
+    width:min(78vmin,760px);height:min(78vmin,760px)}
+  .fx-reticle span{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(52,211,238,.10);animation:spin 70s linear infinite}
+  .fx-reticle span:nth-child(2){inset:13%;border-style:solid;border-color:rgba(52,211,238,.06);animation:spinrev 100s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes spinrev{to{transform:rotate(-360deg)}}
+  /* Étiquette de survol */
+  .hlabel{position:fixed;z-index:6;pointer-events:none;font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+    color:var(--cyan);background:rgba(10,16,22,.82);border:1px solid rgba(52,211,238,.5);padding:4px 10px;white-space:nowrap;
+    box-shadow:0 0 16px rgba(52,211,238,.25);backdrop-filter:blur(4px);
+    clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px)}
+  .hlabel::before{content:'';position:absolute;left:-7px;top:50%;width:6px;height:1px;background:var(--cyan)}
+  /* Panneaux : verre à coins biseautés + ligne d'accent */
+  .statuspill,.brain,.dock{--cut:12px;border-color:rgba(52,211,238,.28);
+    clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut))}
+  .brain,.dock{box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 0 42px rgba(52,211,238,.045)}
+  .brain::before,.dock::before{content:'';position:absolute;top:0;left:14px;right:14px;height:1px;
+    background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:.6}
+  .brand h1{text-shadow:0 0 18px rgba(52,211,238,.45)}
+  button.act:hover{box-shadow:0 0 14px rgba(52,211,238,.22)}
+  /* Fiche : holographique */
+  .sheet{border-right:1px solid rgba(52,211,238,.45);
+    box-shadow:24px 0 70px rgba(0,0,0,.6),inset -1px 0 34px rgba(52,211,238,.05);
+    clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
+  .sheet-head{position:relative}
+  .sheet-head h2{text-shadow:0 0 16px rgba(52,211,238,.35)}
+  .sheet-head::after{content:'';position:absolute;left:18px;right:18px;bottom:-1px;height:1px;transform-origin:left;
+    background:linear-gradient(90deg,var(--cyan),transparent);animation:grow .5s ease both}
+  @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .zoom{position:relative}
+  .zoom::after{content:'';position:absolute;left:0;right:0;height:45%;top:-45%;pointer-events:none;
+    background:linear-gradient(180deg,transparent,rgba(52,211,238,.14),transparent);animation:zscan 3.4s ease-in-out infinite}
+  @keyframes zscan{0%{top:-45%}60%,100%{top:100%}}
+  /* Révélation en cascade du contenu de la fiche */
+  .sheet.open .sheet-body>*{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
+  .sheet.open .sheet-body>*:nth-child(1){animation-delay:.04s}
+  .sheet.open .sheet-body>*:nth-child(2){animation-delay:.09s}
+  .sheet.open .sheet-body>*:nth-child(3){animation-delay:.14s}
+  .sheet.open .sheet-body>*:nth-child(4){animation-delay:.19s}
+  .sheet.open .sheet-body>*:nth-child(5){animation-delay:.24s}
+  .sheet.open .sheet-body>*:nth-child(6){animation-delay:.29s}
+  .sheet.open .sheet-body>*:nth-child(7){animation-delay:.34s}
+  .sheet.open .sheet-body>*:nth-child(n+8){animation-delay:.38s}
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  /* Écran de démarrage */
+  .boot{position:fixed;inset:0;z-index:10;display:grid;place-items:center;
+    background:radial-gradient(circle at 50% 48%,#0c1119,#06090e);transition:opacity .8s ease}
+  .boot.done{opacity:0;pointer-events:none}
+  .boot-ring{position:absolute;width:158px;height:158px;border-radius:50%;border:2px solid rgba(52,211,238,.22);
+    border-top-color:var(--cyan);box-shadow:0 0 30px rgba(52,211,238,.25);animation:spin 1s linear infinite}
+  .boot-t{font-family:var(--disp);font-weight:700;letter-spacing:.42em;font-size:26px;color:var(--cyan);
+    text-shadow:0 0 26px rgba(52,211,238,.55);animation:flick 1.6s ease both}
+  .boot-s{position:absolute;top:calc(50% + 58px);font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--muted)}
+  @keyframes flick{0%{opacity:0}18%{opacity:.5}24%{opacity:.1}42%{opacity:1}48%{opacity:.4}100%{opacity:1}}
+  @media (prefers-reduced-motion: reduce){
+    .fx-scan,.fx-reticle span,.boot-ring,.zoom::after,.sheet-head::after,.sheet.open .sheet-body>*{animation:none!important}
+  }
 </style>
 
 <canvas id="scene"></canvas>
+
+<div class="fx-reticle" aria-hidden="true"><span></span><span></span></div>
+<div class="fx-scan" aria-hidden="true"></div>
+<div class="fx-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="hlabel" id="hlabel" hidden></div>
+<div class="boot" id="boot"><div class="boot-ring"></div><div class="boot-t">A R I A</div><div class="boot-s">initialisation des systèmes</div></div>
 
 <div class="hud topbar">
   <div class="brand">
@@ -357,6 +435,73 @@ eye.position.y = 0.7; eye.userData.partId = 'eye'; headG.add(eye);
 const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({map:radialTexture(0x34d3ee), color:0x34d3ee, transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending}));
 glowSpr.scale.set(1.1,1.1,1); glowSpr.position.y = 0.7; headG.add(glowSpr);
 const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.y = 0.7; headG.add(eyeLight);
+
+/* ---------- FX JARVIS : survol, focus caméra, anneau de scan ---------- */
+const partMeshes = {};
+root.traverse(o=>{ if(o.isMesh && o.userData.partId){ o.userData.mat0 = o.material; (partMeshes[o.userData.partId] || (partMeshes[o.userData.partId]=[])).push(o); } });
+const hoverMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.5, metalness:0.5, roughness:0.3});
+const focusMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.4, roughness:0.25});
+let hoverPart=null, focusPart=null, camTween=null, scanRings=[];
+const CAM_HOME = {theta:0.7, phi:1.02, r:9.2, target:new THREE.Vector3(0,2.1,0)};
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+function meshesOf(id){ return partMeshes[id]||[]; }
+function applyMat(id, mat){ meshesOf(id).forEach(m=>{ m.material = mat || m.userData.mat0; }); }
+function setHover(id){
+  if(id===hoverPart) return;
+  if(hoverPart && hoverPart!==focusPart) applyMat(hoverPart, null);
+  hoverPart=id;
+  if(id && id!==focusPart) applyMat(id, hoverMat);
+}
+function setFocus(id){
+  if(focusPart && focusPart!==id) applyMat(focusPart, null);
+  focusPart=id;
+  if(id) applyMat(id, focusMat);
+  else if(hoverPart) applyMat(hoverPart, hoverMat);
+}
+function partCenter(id){
+  const ms=meshesOf(id); if(!ms.length) return null;
+  const v=new THREE.Vector3(); ms.forEach(m=>v.add(m.getWorldPosition(new THREE.Vector3())));
+  return v.multiplyScalar(1/ms.length);
+}
+function pickHit(x,y){
+  const ndc=new THREE.Vector2((x/window.innerWidth)*2-1, -(y/window.innerHeight)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  const ms=[]; root.traverse(o=>{ if(o.isMesh && o.userData.partId) ms.push(o); });
+  const h=raycaster.intersectObjects(ms,false)[0];
+  return h ? {id:h.object.userData.partId, point:h.point.clone()} : null;
+}
+function focusOn(worldPos){
+  camTween={ t:0, dur:0.9,
+    from:{theta:orbit.theta, phi:orbit.phi, r:orbit.r, target:orbit.target.clone()},
+    to:{theta:orbit.theta, phi:1.0, r:4.6, target:worldPos.clone()} };
+}
+function resetView(){
+  camTween={ t:0, dur:0.9,
+    from:{theta:orbit.theta, phi:orbit.phi, r:orbit.r, target:orbit.target.clone()},
+    to:{theta:CAM_HOME.theta, phi:CAM_HOME.phi, r:CAM_HOME.r, target:CAM_HOME.target.clone()} };
+}
+function scanRing(pos){
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.16,0.22,48),
+    new THREE.MeshBasicMaterial({color:0x34d3ee, transparent:true, opacity:0.85, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending}));
+  ring.position.copy(pos); scene.add(ring); scanRings.push({ring,t:0});
+}
+function updateFx(dt){
+  if(camTween){ camTween.t+=dt; const p=Math.min(1,camTween.t/camTween.dur); const e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    orbit.theta=lerp(camTween.from.theta,camTween.to.theta,e);
+    orbit.phi=lerp(camTween.from.phi,camTween.to.phi,e);
+    orbit.r=lerp(camTween.from.r,camTween.to.r,e);
+    orbit.target.lerpVectors(camTween.from.target,camTween.to.target,e);
+    if(p>=1) camTween=null;
+  }
+  if(focusPart) focusMat.emissiveIntensity = 0.7 + 0.45*Math.max(0,Math.sin(clock*3.5));
+  if(scanRings.length) scanRings=scanRings.filter(s=>{
+    s.t+=dt; const p=s.t/0.75; s.ring.quaternion.copy(camera.quaternion);
+    const sc=0.2+p*2.8; s.ring.scale.set(sc,sc,1); s.ring.material.opacity=0.85*(1-p);
+    if(p>=1){ scene.remove(s.ring); s.ring.geometry.dispose(); s.ring.material.dispose(); return false; }
+    return true;
+  });
+}
 
 /* ---------- Gestes ---------- */
 const GESTURES = {
@@ -705,7 +850,8 @@ function frame(now){
   mC.style.width = (brain.curiosity*100)+'%';
   mB.style.width = (brain.boredom*100)+'%';
 
-  // Caméra orbitale
+  // FX (focus caméra, pulsation, anneaux de scan) + caméra orbitale
+  updateFx(dt);
   const s = orbit;
   camera.position.set(
     s.target.x + s.r*Math.sin(s.phi)*Math.sin(s.theta),
@@ -726,9 +872,14 @@ function resize(){
 }
 window.addEventListener('resize', resize); resize();
 
+const hlabel=document.getElementById('hlabel');
+let _hoverAt=0;
+function showHoverLabel(x,y,id){ const p=partById(id); if(!p){ hideHoverLabel(); return; } hlabel.textContent=p.name; hlabel.style.left=(x+16)+'px'; hlabel.style.top=(y+18)+'px'; hlabel.hidden=false; }
+function hideHoverLabel(){ if(hlabel) hlabel.hidden=true; }
+
 let dragging=false, lastX=0, lastY=0, moved=0;
 canvas.addEventListener('pointerdown', e=>{
-  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY;
+  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY; camTween=null;   // reprise du contrôle
   canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e=>{
@@ -737,8 +888,10 @@ canvas.addEventListener('pointermove', e=>{
     moved += Math.abs(dx)+Math.abs(dy);
     orbit.theta -= dx*0.006;
     orbit.phi = Math.max(0.3, Math.min(1.5, orbit.phi - dy*0.006));
-  } else if(brain.awake){
-    // suivi du regard
+    hideHoverLabel();
+    return;
+  }
+  if(brain.awake){
     const nx = (e.clientX/window.innerWidth)*2-1;
     const ny = (e.clientY/window.innerHeight)*2-1;
     brain.attention.x = Math.max(-1,Math.min(1, nx*1.1));
@@ -747,19 +900,27 @@ canvas.addEventListener('pointermove', e=>{
     brain.lastInteract = clock; brain.boredom = Math.max(0, brain.boredom-dt0());
     if(server.connected) sendAttention();
   }
+  if(clock - _hoverAt > 0.05){   // survol des pièces (throttle)
+    _hoverAt = clock;
+    const h = pickHit(e.clientX, e.clientY);
+    setHover(h ? h.id : null);
+    if(h){ showHoverLabel(e.clientX, e.clientY, h.id); canvas.style.cursor='pointer'; }
+    else { hideHoverLabel(); canvas.style.cursor=''; }
+  }
 });
+canvas.addEventListener('pointerleave', ()=>{ setHover(null); hideHoverLabel(); });
 function dt0(){ return 0.004; }
 canvas.addEventListener('pointerup', e=>{
   dragging=false; canvas.classList.remove('dragging');
   if(moved < 6){ // clic simple
-    const pid = pickPart(e.clientX, e.clientY);
-    if(pid){ openPartSheet(pid); return; }   // clic sur une pièce -> sa fiche
+    const hit = pickHit(e.clientX, e.clientY);
+    if(hit){ openPartSheet(hit.id, hit.point); return; }   // clic sur une pièce -> focus + fiche
     if(server.connected){ serverSend({type:'poke'}); }
     else { wake(true); log('reflexe','sollicité par contact'); setState('attentive'); brain.boredom = 0; }
   }
 });
 canvas.addEventListener('wheel', e=>{
-  e.preventDefault();
+  e.preventDefault(); camTween=null;
   orbit.r = Math.max(4.5, Math.min(16, orbit.r + Math.sign(e.deltaY)*0.6));
 }, {passive:false});
 
@@ -848,18 +1009,12 @@ async function partsInit(){
 }
 function partById(id){ return CATALOG.find(p=>p.id===id); }
 
-function pickPart(x,y){
-  const ndc = new THREE.Vector2((x/window.innerWidth)*2-1, -(y/window.innerHeight)*2+1);
-  raycaster.setFromCamera(ndc, camera);
-  const meshes=[]; root.traverse(o=>{ if(o.isMesh && o.userData.partId) meshes.push(o); });
-  const hit = raycaster.intersectObjects(meshes, false)[0];
-  return hit ? hit.object.userData.partId : null;
-}
+function pickPart(x,y){ const h=pickHit(x,y); return h ? h.id : null; }
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
 function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
-function closeSheet(){ sheetEl.classList.remove('open'); }
+function closeSheet(){ sheetEl.classList.remove('open'); setFocus(null); resetView(); }
 
 function openCatalogue(){
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
@@ -879,7 +1034,13 @@ function openCatalogue(){
   sheetEl.innerHTML = h; sheetEl.classList.add('open');
 }
 
-function openPartSheet(id){ const p=partById(id); if(!p){ openCatalogue(); return; } renderView(p); sheetEl.classList.add('open'); }
+function openPartSheet(id, point){
+  const p=partById(id); if(!p){ openCatalogue(); return; }
+  renderView(p); sheetEl.classList.add('open');
+  setFocus(id);
+  const fp = point || partCenter(id);
+  if(fp){ focusOn(fp); scanRing(fp); }
+}
 
 function kvRows(o){
   if(!o || typeof o!=='object') return '';
@@ -1061,6 +1222,9 @@ log('reflexe','calibration des articulations... ok');
 log('decision','couche délibérative active');
 think('Atelier en ligne. Je regarde autour de moi.');
 requestAnimationFrame(frame);
+
+// Extinction de l'écran de démarrage
+setTimeout(()=>{ const bt=document.getElementById('boot'); if(bt){ bt.classList.add('done'); setTimeout(()=>bt.remove(), 900); } }, 1500);
 
 /* Choix de la couche haute :
    - dans l'artifact claude.ai -> couche IA (Claude), pas de WebSocket (CSP)
