@@ -18,7 +18,12 @@ import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
-from brain import Brain
+try:
+    # lancé depuis le dossier brain/  (uvicorn main:app)
+    from brain import Brain
+except ImportError:
+    # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
+    from brain.brain import Brain
 
 app = FastAPI(title="Cerveau ARIA")
 brain = Brain()

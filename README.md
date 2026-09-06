@@ -72,10 +72,12 @@ réagir. Le canal temps réel est sur `/ws`, la sonde de santé sur `/health`.
 
 ## Déployer le cerveau sur Railway
 
+Le repo se déploie **depuis la racine** : aucun réglage de Root Directory à faire.
+La config est dans `railway.json` (racine).
+
 1. Railway -> **New Project -> Deploy from GitHub repo** -> `Assistant-bras-mecanique`.
-2. Dans les réglages du service, mettre **Root Directory = `brain`** (le code Python
-   est dans ce sous-dossier).
-3. Railway détecte Python, installe `requirements.txt` et lance la commande de
-   `railway.json`. La sonde `/health` confirme le démarrage.
+2. Railway lit `railway.json`, installe `requirements.txt` et lance
+   `uvicorn brain.main:app`. La sonde `/health` confirme le démarrage.
+3. Onglet **Settings -> Networking -> Generate Domain** pour l'URL publique.
 4. À chaque `git push`, Railway redéploie tout seul.
 
