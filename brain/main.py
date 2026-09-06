@@ -14,9 +14,13 @@ brancher : la page de test ici, le corps 3D plus tard, le vrai bras un jour.
 from __future__ import annotations
 import asyncio
 import json
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+
+# Le corps 3D vit dans web/index.html, à la racine du repo (un niveau au-dessus).
+WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
 
 try:
     # lancé depuis le dossier brain/  (uvicorn main:app)
@@ -177,4 +181,13 @@ document.getElementById('f').onsubmit=ev=>{ev.preventDefault();
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
+    # Le corps 3D d'ARIA, servi par le cerveau : même origine -> WebSocket /ws autorisé.
+    try:
+        return WEB_INDEX.read_text(encoding="utf-8")
+    except OSError:
+        return PAGE  # repli : console de test si le corps 3D est absent
+
+
+@app.get("/console", response_class=HTMLResponse)
+async def console() -> str:
     return PAGE

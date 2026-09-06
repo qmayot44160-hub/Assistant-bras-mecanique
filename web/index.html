@@ -317,6 +317,7 @@ const brain = {
   autonomy:true, ai:null,        // ai = couche LLM (claude.use('sample')) ou null -> réflexes
   lastInteract:0, nextDecision:2.5,
 };
+const server = { ws:null, connected:false, tries:0, lastAtt:0 };  // cerveau serveur (WebSocket)
 const EYE_COLORS = { sleep:0x14324a, idle:0x34d3ee, attentive:0x34d3ee, curious:0xf5a623, happy:0x38e08a, confused:0xff5d5d };
 const STATE_FR = { sleep:'en veille', idle:'au repos', attentive:'attentif', curious:'curieux', happy:'content', confused:'perplexe' };
 
@@ -369,6 +370,7 @@ function react(kind){ // transitions courtes déclenchées par le dialogue/actio
    SEAM, désormais branché. */
 function interpret(raw){
   if(!raw.trim()) return;
+  if(server.connected){ serverSend({type:'say', text:raw}); return; }  // le serveur décide
   log('dialogue', '« '+raw+' »');
   if(!brain.awake) wake(true);
   if(brain.ai) aiRespond(raw);
@@ -475,10 +477,48 @@ function showThinking(){
   if(thoughtTimer){ clearInterval(thoughtTimer); thoughtTimer=null; }
   thoughtEl.innerHTML = '<span style="color:var(--muted)">réfléchit</span><span class="cursor"></span>';
 }
-function setAIStatus(on){
+function updateChip(){
   const chip = document.getElementById('aiChip'); if(!chip) return;
-  chip.textContent = on ? 'IA en ligne' : 'réflexes seuls';
-  chip.classList.toggle('on', !!on);
+  if(server.connected){ chip.textContent='cerveau serveur'; chip.classList.add('on'); }
+  else if(brain.ai){ chip.textContent='IA en ligne'; chip.classList.add('on'); }
+  else { chip.textContent='réflexes seuls'; chip.classList.remove('on'); }
+}
+function setAIStatus(){ updateChip(); }
+
+/* ---------- Couche CERVEAU SERVEUR (WebSocket) ----------
+   Quand la page est servie par le cerveau Python (Railway), elle se connecte
+   à /ws (même origine) et se laisse piloter : le serveur décide, le corps
+   exécute. Dans l'artifact (bloqué par la CSP) ou depuis un fichier local,
+   cette couche reste silencieuse et le cerveau local prend le relais. */
+function onServerEvent(d){
+  if(!d || typeof d!=='object') return;
+  if(d.type==='state'){ if(typeof d.awake==='boolean') brain.awake=d.awake; if(d.state) setState(d.state); }
+  else if(d.type==='gesture'){ if(GESTURES[d.name]) trigger(d.name); }
+  else if(d.type==='thought'){ if(typeof d.text==='string') think(d.text); }
+  else if(d.type==='attention'){ brain.attention.x=+d.x||0; brain.attention.y=+d.y||0; }
+  else if(d.type==='log'){ log(d.layer||'etat', d.msg||''); }
+}
+function serverSend(obj){ if(server.connected){ try{ server.ws.send(JSON.stringify(obj)); }catch(_){} } }
+function sendAttention(){
+  if(!server.connected || (clock - server.lastAtt) < 0.1) return;   // throttle ~10/s
+  server.lastAtt = clock;
+  serverSend({type:'attention', x:brain.attention.x, y:brain.attention.y});
+}
+function connectServer(){
+  if(location.protocol==='file:') return;
+  let url, ws;
+  try{ url = (location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws'; }catch(e){ return; }
+  try{ ws = new WebSocket(url); }catch(e){ return; }
+  server.ws = ws;
+  ws.onopen  = ()=>{ server.connected=true; server.tries=0; updateChip(); log('etat','cerveau serveur connecté'); };
+  ws.onmessage = e=>{ try{ onServerEvent(JSON.parse(e.data)); }catch(_){} };
+  ws.onerror = ()=>{ try{ ws.close(); }catch(_){} };
+  ws.onclose = ()=>{
+    const was = server.connected; server.connected=false; updateChip();
+    if(was) log('etat','cerveau serveur déconnecté');
+    server.tries++;
+    if(was || server.tries < 6) setTimeout(connectServer, 1500); // sinon on laisse le cerveau local
+  };
 }
 
 /* Actions haut niveau */
@@ -504,6 +544,7 @@ function wake(byUser){
 
 /* Couche délibérative : décisions spontanées (stub règle-based, seam LLM) */
 function decide(){
+  if(server.connected) return;                 // le cerveau serveur pilote les décisions
   if(!brain.autonomy || !brain.awake) return;
   brain.nextDecision = 3 + Math.random()*4;
 
@@ -640,16 +681,15 @@ canvas.addEventListener('pointermove', e=>{
     brain.attention.y = Math.max(-0.8,Math.min(0.8, ny*0.9));
     if(brain.state==='idle'){ setState('attentive'); }
     brain.lastInteract = clock; brain.boredom = Math.max(0, brain.boredom-dt0());
+    if(server.connected) sendAttention();
   }
 });
 function dt0(){ return 0.004; }
 canvas.addEventListener('pointerup', e=>{
   dragging=false; canvas.classList.remove('dragging');
   if(moved < 6){ // clic simple = on le sollicite
-    wake(true);
-    log('reflexe','sollicité par contact');
-    setState('attentive');
-    brain.boredom = 0;
+    if(server.connected){ serverSend({type:'poke'}); }
+    else { wake(true); log('reflexe','sollicité par contact'); setState('attentive'); brain.boredom = 0; }
   }
 });
 canvas.addEventListener('wheel', e=>{
@@ -661,6 +701,13 @@ canvas.addEventListener('wheel', e=>{
 document.querySelectorAll('button.act').forEach(b=>{
   b.addEventListener('click', ()=>{
     const c = b.dataset.cmd;
+    if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
+      if(c==='greet') serverSend({type:'say', text:'bonjour'});
+      else if(c==='ask') serverSend({type:'say', text:'une question ?'});
+      else if(c==='praise') serverSend({type:'say', text:'bravo'});
+      else if(c==='sleep') serverSend({type: brain.awake?'sleep':'wake'});
+      return;
+    }
     if(c==='greet') greet();
     else if(c==='ask') askDemo();
     else if(c==='praise') praise();
@@ -686,9 +733,14 @@ log('decision','couche délibérative active');
 think('Atelier en ligne. Je regarde autour de moi.');
 requestAnimationFrame(frame);
 
-/* Connexion de la couche IA (facultative : repli réflexes si absente/refusée) */
+/* Choix de la couche haute :
+   - dans l'artifact claude.ai -> couche IA (Claude), pas de WebSocket (CSP)
+   - servi par le cerveau Python (Railway) -> connexion au cerveau serveur
+   - fichier local -> réflexes seuls */
+const inArtifact = !!(window.claude && window.claude.use);
+if(!inArtifact) connectServer();
 (async function initAI(){
-  if(!(window.claude && window.claude.use)){ setAIStatus(false); return; }
+  if(!inArtifact){ updateChip(); return; }
   try{
     const s = await window.claude.use('sample');
     brain.ai = s || null;
