@@ -796,7 +796,8 @@ sayIn.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
 const sheetEl = document.getElementById('sheet');
 const raycaster = new THREE.Raycaster();
 let CATALOG = [];
-let catalogEditable = false;   // vrai si le backend (cerveau) répond
+let catalogEditable = false;   // édition possible (toujours vrai après init)
+let catalogBackend = false;    // vrai si servi par le cerveau -> stockage serveur (/data)
 
 // Catalogue de repli (lecture seule) pour l'artifact / le fichier local.
 const SEED_FALLBACK = [
@@ -834,13 +835,16 @@ let _persistT=null;
 function persist(){ clearTimeout(_persistT); _persistT=setTimeout(()=>idbSet('catalog', CATALOG), 120); }
 
 async function partsInit(){
-  let base=null;
-  try{ const r=await fetch('/api/parts',{cache:'no-store'}); if(r.ok) base=await r.json(); }catch(_){}
-  if(!base) base = SEED_FALLBACK.map(p=>({...p}));   // artifact / local : catalogue de référence embarqué
+  // Servi par le cerveau (Railway) -> le SERVEUR est la source de vérité (/data).
+  try{
+    const r=await fetch('/api/parts',{cache:'no-store'});
+    if(r.ok){ CATALOG = await r.json(); catalogBackend = true; catalogEditable = true; return; }
+  }catch(_){}
+  // Sinon (artifact / fichier local) -> stockage NAVIGATEUR.
+  catalogBackend = false; catalogEditable = true;
   const saved = await idbGet('catalog');
-  if(saved && Array.isArray(saved) && saved.length){ CATALOG = saved; }   // tes éditions ont priorité
-  else { CATALOG = base; await idbSet('catalog', CATALOG); }
-  catalogEditable = true;   // toujours éditable : persistance locale garantie
+  if(saved && Array.isArray(saved) && saved.length){ CATALOG = saved; }
+  else { CATALOG = SEED_FALLBACK.map(p=>({...p})); await idbSet('catalog', CATALOG); }
 }
 function partById(id){ return CATALOG.find(p=>p.id===id); }
 
@@ -860,7 +864,7 @@ function closeSheet(){ sheetEl.classList.remove('open'); }
 function openCatalogue(){
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
   let h = `<div class="sheet-head"><h2>Catalogue des pièces</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
-  h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">Tes fiches, photos et PDF sont enregistrés dans ce navigateur.</div>`;
+  h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">Fiches, photos et PDF enregistrés ${catalogBackend?'sur le serveur (/data)':'dans ce navigateur'}.</div>`;
   for(const [cat,label] of groups){
     const items = CATALOG.filter(p=>p.category===cat);
     if(!items.length) continue;
@@ -946,8 +950,13 @@ function collectEdit(id){
 async function savePart(id){
   const merged = {...(partById(id)||{}), ...collectEdit(id)};
   const i=CATALOG.findIndex(p=>p.id===id); if(i>=0) CATALOG[i]=merged; else CATALOG.push(merged);
-  persist();
-  renderView(merged);
+  if(catalogBackend){
+    try{
+      const r=await fetch('/api/parts/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(merged)});
+      if(r.ok){ const saved=await r.json(); const j=CATALOG.findIndex(p=>p.id===id); if(j>=0) CATALOG[j]=saved; renderView(saved); return; }
+    }catch(_){}
+  } else persist();
+  renderView(partById(id)||merged);
 }
 
 function readImageCompressed(file, maxDim=1600, quality=0.82){
@@ -965,43 +974,69 @@ function readImageCompressed(file, maxDim=1600, quality=0.82){
   });
 }
 function readAsDataURL(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(file); }); }
+function compressImageToBlob(file, maxDim=1600, quality=0.82){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file); const img=new Image();
+    img.onload=()=>{ URL.revokeObjectURL(url);
+      let w=img.naturalWidth,h=img.naturalHeight; const s=Math.min(1,maxDim/Math.max(w,h));
+      w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h);
+      cv.toBlob(b=> b?res(b):rej(new Error('blob')), 'image/jpeg', quality);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('image illisible')); };
+    img.src=url;
+  });
+}
 
-// Upload LOCAL : image compressée / PDF lu, stocké dans le navigateur (IndexedDB).
+// Upload : serveur (/data) si servi par le cerveau, sinon navigateur.
 async function uploadFile(id, kind, input, statusId){
   const f=input.files&&input.files[0]; if(!f) return;
   const st=document.getElementById(statusId); if(st) st.textContent='traitement...';
   try{
+    if(catalogBackend){
+      let blob=f, filename=f.name||(kind==='photo'?'photo.jpg':'fiche.pdf');
+      if(kind==='photo'){ blob=await compressImageToBlob(f); filename='photo.jpg'; }
+      else if(f.size>12*1024*1024){ if(st) st.textContent='PDF trop lourd (>12 Mo)'; return; }
+      const fd=new FormData(); fd.append('kind',kind); fd.append('file', blob, filename);
+      if(st) st.textContent='envoi...';
+      const r=await fetch('/api/parts/'+encodeURIComponent(id)+'/upload',{method:'POST',body:fd});
+      if(r.ok){ const {url}=await r.json(); const p=partById(id); if(p) p[kind]=url; if(st) st.textContent=(kind==='photo'?'photo':'PDF')+' envoyé ✓'; }
+      else if(st) st.textContent='erreur '+r.status;
+      return;
+    }
     let dataUrl;
     if(kind==='photo'){ dataUrl = await readImageCompressed(f); }
-    else {
-      if(f.size > 8*1024*1024){ if(st) st.textContent='PDF trop lourd (>8 Mo)'; return; }
-      dataUrl = await readAsDataURL(f);
-    }
+    else { if(f.size>8*1024*1024){ if(st) st.textContent='PDF trop lourd (>8 Mo)'; return; } dataUrl = await readAsDataURL(f); }
     const p=partById(id); if(p){ p[kind]=dataUrl; persist(); }
     if(st) st.textContent=(kind==='photo'?'photo':'PDF')+' enregistré ✓';
   }catch(e){ if(st) st.textContent='erreur (fichier illisible)'; }
 }
 
-function deletePart(id){
-  CATALOG = CATALOG.filter(p=>p.id!==id); persist();
+async function deletePart(id){
+  CATALOG = CATALOG.filter(p=>p.id!==id);
+  if(catalogBackend){ try{ await fetch('/api/parts/'+encodeURIComponent(id),{method:'DELETE'}); }catch(_){} }
+  else persist();
   openCatalogue();
 }
 
 async function resetCatalog(){
-  if(!confirm('Réinitialiser au catalogue de référence ? Tes modifs et fichiers locaux seront perdus.')) return;
-  let base=null;
-  try{ const r=await fetch('/api/parts',{cache:'no-store'}); if(r.ok) base=await r.json(); }catch(_){}
-  CATALOG = base || SEED_FALLBACK.map(p=>({...p}));
+  if(!confirm('Réinitialiser au catalogue de référence ? Tes modifs et fichiers seront perdus.')) return;
+  if(catalogBackend){
+    try{ const r=await fetch('/api/reset',{method:'POST'}); if(r.ok){ CATALOG=await r.json(); openCatalogue(); return; } }catch(_){}
+  }
+  CATALOG = SEED_FALLBACK.map(p=>({...p}));
   await idbSet('catalog', CATALOG);
   openCatalogue();
 }
 
-function newPart(){
+async function newPart(){
   const name = prompt('Nom de la nouvelle pièce (upgrade) ?'); if(!name) return;
   let id = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || ('piece-'+Date.now());
   if(partById(id)) id = id+'-'+Date.now().toString(36);
   const part={id,name,category:'achat',role:'',qty:1,price:'~',specs:{},components:[],wires:[],notes:'',photo:null,datasheet:null};
-  CATALOG.push(part); persist();
+  CATALOG.push(part);
+  if(catalogBackend){ try{ await fetch('/api/parts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(part)}); }catch(_){} }
+  else persist();
   renderEdit(part); sheetEl.classList.add('open');
 }
 

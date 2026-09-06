@@ -122,6 +122,11 @@ async def api_part_delete(pid: str) -> dict:
     return {"deleted": catalog.delete(pid)}
 
 
+@app.post("/api/reset")
+async def api_reset() -> list[dict]:
+    return catalog.reset()
+
+
 @app.post("/api/parts/{pid}/upload")
 async def api_upload(pid: str, kind: str = Form(...), file: UploadFile = File(...)) -> dict:
     part = catalog.get(pid)

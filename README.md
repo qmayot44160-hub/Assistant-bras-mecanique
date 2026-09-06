@@ -90,17 +90,18 @@ ou le bouton **Pièces** pour le catalogue complet. Tout est **éditable** :
 modifier une pièce, téléverser une photo (zoom) et un PDF de fiche technique,
 ajouter une nouvelle pièce (upgrade), réinitialiser au catalogue de référence.
 
-### Persistance : dans ton navigateur (aucun réglage)
+### Persistance : serveur ou navigateur (automatique)
 
-Tes modifications, photos et PDF sont enregistrés **localement dans ton
-navigateur** (IndexedDB, repli localStorage). Aucun volume ni plan payant
-requis, et ça survit aux redéploiements. Les photos sont compressées avant
-stockage. Limite : c'est par navigateur/appareil (pas de synchro entre
-appareils pour l'instant).
+L'app choisit selon son contexte :
 
-Le serveur sert un catalogue de **référence** en lecture via `GET /api/parts`
-(seed dans `brain/catalog.py`). Les routes d'écriture (`POST/PUT/DELETE
-/api/parts`, `POST /api/parts/{id}/upload`, stockage `DATA_DIR`) existent pour
-une future synchro serveur (elles nécessiteraient un stockage persistant, ex.
-un volume Railway), mais ne sont pas utilisées par l'app aujourd'hui.
+- **Servie par le cerveau (Railway)** -> stockage **serveur** dans `DATA_DIR`
+  (défaut `/data`) : `catalog.json` + fichiers dans `uploads/`, partagé entre
+  tes appareils. Monte un **volume Railway sur `/data`** pour que ça survive
+  aux redéploiements (sinon éphémère). Le volume s'ajoute par clic droit sur
+  le service -> Attach Volume (ou Ctrl/Cmd+K -> « volume »).
+- **Artifact claude.ai / fichier local** -> stockage **navigateur** (IndexedDB,
+  repli localStorage), par appareil.
+
+Les photos sont compressées avant stockage. API : `GET/POST/PUT/DELETE
+/api/parts`, `POST /api/parts/{id}/upload`, `POST /api/reset`, `GET /api/files/{nom}`.
 
