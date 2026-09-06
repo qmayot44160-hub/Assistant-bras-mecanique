@@ -82,23 +82,25 @@ La config est dans `railway.json` (racine).
 3. Onglet **Settings -> Networking -> Generate Domain** pour l'URL publique.
 4. À chaque `git push`, Railway redéploie tout seul.
 
-### Persistance du catalogue (photos, fiches, upgrades)
-
-Le catalogue des pièces et les fichiers téléversés vivent dans `DATA_DIR`
-(défaut `/data`). Sans stockage persistant, ils repartent du catalogue de
-référence à chaque redéploiement. Pour les conserver :
-
-1. Service Railway -> **Settings -> Volumes -> Add Volume**, point de montage `/data`.
-2. C'est tout : le serveur écrit déjà dans `/data`. (Variable `DATA_DIR`
-   personnalisable si tu montes ailleurs.)
-
 ## Les pièces (catalogue modulable)
 
 Dans l'app 3D : **clique une pièce du bras** pour ouvrir sa fiche (rôle, à
 imprimer ou acheter, composants, fils/connecteurs, photo, fiche technique),
-ou le bouton **Pièces** pour le catalogue complet. Servi par le cerveau, tout
-est **éditable** : modifier une pièce, téléverser une photo (zoom) et un PDF de
-fiche technique, ajouter une nouvelle pièce (upgrade). L'API : `GET/POST/PUT/DELETE
-/api/parts`, `POST /api/parts/{id}/upload`. Ouvert hors serveur (artifact,
-fichier local), le catalogue de référence s'affiche en lecture seule.
+ou le bouton **Pièces** pour le catalogue complet. Tout est **éditable** :
+modifier une pièce, téléverser une photo (zoom) et un PDF de fiche technique,
+ajouter une nouvelle pièce (upgrade), réinitialiser au catalogue de référence.
+
+### Persistance : dans ton navigateur (aucun réglage)
+
+Tes modifications, photos et PDF sont enregistrés **localement dans ton
+navigateur** (IndexedDB, repli localStorage). Aucun volume ni plan payant
+requis, et ça survit aux redéploiements. Les photos sont compressées avant
+stockage. Limite : c'est par navigateur/appareil (pas de synchro entre
+appareils pour l'instant).
+
+Le serveur sert un catalogue de **référence** en lecture via `GET /api/parts`
+(seed dans `brain/catalog.py`). Les routes d'écriture (`POST/PUT/DELETE
+/api/parts`, `POST /api/parts/{id}/upload`, stockage `DATA_DIR`) existent pour
+une future synchro serveur (elles nécessiteraient un stockage persistant, ex.
+un volume Railway), mais ne sont pas utilisées par l'app aujourd'hui.
 
