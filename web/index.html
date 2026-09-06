@@ -1,0 +1,701 @@
+<title>Atelier ARIA</title>
+<meta name="description" content="Bras robotisé virtuel au cerveau en couches : il bouge seul et te répond par hochements de tête.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0a0d13;
+    --bg2:#0c1017;
+    --panel:rgba(17,23,32,.72);
+    --panel-solid:#111720;
+    --line:rgba(120,150,180,.18);
+    --line-strong:rgba(120,150,180,.34);
+    --text:#e6edf3;
+    --muted:#8aa0b6;
+    --dim:#5a6b7d;
+    --cyan:#34d3ee;
+    --amber:#f5a623;
+    --green:#38e08a;
+    --red:#ff5d5d;
+    --sans:"IBM Plex Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --disp:"Chakra Petch",var(--sans);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:var(--sans);overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #scene{position:fixed;inset:0;z-index:0;display:block;touch-action:none;cursor:grab}
+  #scene.dragging{cursor:grabbing}
+
+  .hud{position:fixed;z-index:2;pointer-events:none}
+  .hud *{pointer-events:auto}
+
+  /* Top bar */
+  .topbar{top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;
+    padding:18px 20px;gap:16px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .sigil{width:38px;height:38px;flex:0 0 auto;border:1px solid var(--line-strong);border-radius:10px;
+    display:grid;place-items:center;background:linear-gradient(160deg,rgba(52,211,238,.14),rgba(52,211,238,0));
+    box-shadow:0 0 24px rgba(52,211,238,.12) inset}
+  .sigil svg{width:22px;height:22px}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:.14em;margin:0;line-height:1}
+  .brand .sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:5px}
+  .statuspill{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;
+    backdrop-filter:blur(10px);letter-spacing:.03em}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px currentColor;color:var(--cyan)}
+
+  /* Brain panel */
+  .brain{top:82px;right:20px;width:290px;max-width:calc(100vw - 40px);
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    backdrop-filter:blur(12px);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  .brain-head{padding:12px 15px 10px;border-bottom:1px solid var(--line);display:flex;
+    align-items:baseline;justify-content:space-between}
+  .brain-head .t{font-family:var(--disp);font-size:12px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+  .brain-head .st{font-family:var(--mono);font-size:12px;font-weight:500}
+  .brain-body{padding:14px 15px}
+  .thought{font-size:14px;line-height:1.45;min-height:42px;margin:0 0 14px;color:var(--text)}
+  .thought .cursor{display:inline-block;width:7px;height:15px;background:var(--cyan);margin-left:1px;
+    vertical-align:-2px;animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .meters{display:flex;flex-direction:column;gap:9px;margin-bottom:6px}
+  .meter{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:10px}
+  .meter label{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em}
+  .bar{height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+  .bar>i{display:block;height:100%;width:50%;border-radius:99px;transition:width .5s ease}
+
+  /* Log */
+  .logwrap{border-top:1px solid var(--line);margin-top:4px}
+  .logwrap .lh{font-family:var(--disp);font-size:11px;letter-spacing:.16em;color:var(--dim);
+    text-transform:uppercase;padding:11px 15px 6px}
+  .log{font-family:var(--mono);font-size:11.5px;line-height:1.5;padding:0 15px 14px;
+    max-height:170px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+  .log .row{display:flex;gap:8px}
+  .log .ts{color:var(--dim);flex:0 0 auto}
+  .log .tag{flex:0 0 auto;font-weight:500}
+  .log .msg{color:var(--muted)}
+  .tag-reflexe{color:var(--dim)}
+  .tag-decision{color:var(--cyan)}
+  .tag-dialogue{color:var(--amber)}
+  .tag-etat{color:var(--green)}
+
+  /* Dock */
+  .dock{left:50%;transform:translateX(-50%);bottom:20px;width:min(720px,calc(100vw - 32px));
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(12px);
+    padding:12px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  button.act{font-family:var(--sans);font-weight:500;font-size:13px;color:var(--text);
+    background:rgba(255,255,255,.04);border:1px solid var(--line-strong);border-radius:10px;
+    padding:9px 13px;cursor:pointer;transition:.16s;display:inline-flex;align-items:center;gap:7px}
+  button.act:hover{background:rgba(52,211,238,.12);border-color:var(--cyan)}
+  button.act:active{transform:translateY(1px)}
+  button.act .ic{font-size:14px;line-height:1}
+  .toggle{margin-left:auto;display:flex;align-items:center;gap:9px;font-family:var(--mono);
+    font-size:12px;color:var(--muted)}
+  .sw{width:38px;height:21px;border-radius:99px;background:rgba(255,255,255,.1);border:1px solid var(--line-strong);
+    position:relative;cursor:pointer;transition:.2s;flex:0 0 auto}
+  .sw>i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--dim);transition:.2s}
+  .sw.on{background:rgba(52,211,238,.28);border-color:var(--cyan)}
+  .sw.on>i{left:19px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  .aichip{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--dim);
+    border:1px solid var(--line);border-radius:99px;padding:5px 10px;display:inline-flex;align-items:center;gap:6px}
+  .aichip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim);transition:.3s}
+  .aichip.on{color:var(--cyan);border-color:rgba(52,211,238,.4)}
+  .aichip.on::before{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  .talk{display:flex;gap:8px}
+  .talk input{flex:1;min-width:0;font-family:var(--sans);font-size:14px;color:var(--text);
+    background:rgba(0,0,0,.28);border:1px solid var(--line-strong);border-radius:10px;padding:11px 13px;outline:none}
+  .talk input::placeholder{color:var(--dim)}
+  .talk input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(52,211,238,.12)}
+  .talk button{font-family:var(--disp);letter-spacing:.08em;font-size:13px;font-weight:600;color:var(--bg);
+    background:var(--cyan);border:none;border-radius:10px;padding:0 18px;cursor:pointer;transition:.16s}
+  .talk button:hover{filter:brightness(1.08)}
+  .talk button:active{transform:translateY(1px)}
+
+  .hint{position:fixed;left:20px;bottom:22px;z-index:2;font-family:var(--mono);font-size:11px;
+    color:var(--dim);max-width:220px;line-height:1.5;pointer-events:none}
+  @media (max-width:900px){
+    .brain{position:fixed;top:auto;bottom:150px;right:12px;left:12px;width:auto}
+    .log{max-height:110px}
+    .hint{display:none}
+  }
+  @media (max-width:900px) and (max-height:720px){ .brain{display:none} }
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+</style>
+
+<canvas id="scene"></canvas>
+
+<div class="hud topbar">
+  <div class="brand">
+    <div class="sigil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#34d3ee" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 20h6"/><path d="M7 20v-5l5-4"/><path d="M12 11l4-5"/><circle cx="17" cy="5" r="2.2"/>
+      </svg>
+    </div>
+    <div>
+      <h1>ARIA</h1>
+      <div class="sub">Articulated Reactive Intelligent Arm - v0.1</div>
+    </div>
+  </div>
+  <div class="statuspill"><span class="dot" id="stateDot"></span><span id="stateLabel">initialisation</span></div>
+</div>
+
+<div class="hud brain">
+  <div class="brain-head">
+    <span class="t">Cerveau</span>
+    <span class="st" id="moodLabel">calme</span>
+  </div>
+  <div class="brain-body">
+    <p class="thought" id="thought">Je me réveille.<span class="cursor"></span></p>
+    <div class="meters">
+      <div class="meter"><label>énergie</label><div class="bar"><i id="mEnergy" style="background:var(--cyan)"></i></div></div>
+      <div class="meter"><label>curiosité</label><div class="bar"><i id="mCurio" style="background:var(--amber)"></i></div></div>
+      <div class="meter"><label>ennui</label><div class="bar"><i id="mBore" style="background:var(--red)"></i></div></div>
+    </div>
+  </div>
+  <div class="logwrap">
+    <div class="lh">Journal des couches</div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<div class="hud dock">
+  <div class="actions">
+    <button class="act" data-cmd="greet"><span class="ic">👋</span>Salue-le</button>
+    <button class="act" data-cmd="ask"><span class="ic">❓</span>Pose une question</button>
+    <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
+    <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
+    <span class="aichip" id="aiChip">IA…</span>
+    <div class="toggle">autonomie<div class="sw on" id="autoSw"><i></i></div></div>
+  </div>
+  <div class="talk">
+    <input id="say" type="text" autocomplete="off" placeholder="Parle-lui librement... il comprend et te répond par gestes">
+    <button id="sayBtn">Envoyer</button>
+  </div>
+</div>
+
+<div class="hint">Glisse pour tourner autour · molette pour zoomer · bouge la souris, il te suit du regard</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const THREE = window.THREE;
+const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Scène ---------- */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setClearColor(0x0a0d13, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0a0d13, 12, 30);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const orbit = {theta:0.7, phi:1.02, r:9.2, target:new THREE.Vector3(0,2.1,0)};
+
+/* Lumières */
+scene.add(new THREE.HemisphereLight(0x9fc4ff, 0x0a0d13, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 0.85); key.position.set(5,9,4); scene.add(key);
+const rimC = new THREE.PointLight(0x34d3ee, 0.7, 26); rimC.position.set(-6,3,-3); scene.add(rimC);
+const rimA = new THREE.PointLight(0xf5a623, 0.4, 22); rimA.position.set(5,1.5,-5); scene.add(rimA);
+
+/* Sol : grille holo + disque */
+const grid = new THREE.GridHelper(40, 40, 0x2b4a63, 0x16222f);
+grid.material.transparent = true; grid.material.opacity = 0.55; scene.add(grid);
+const floorGeo = new THREE.CircleGeometry(18, 48);
+const floorMat = new THREE.MeshStandardMaterial({color:0x0c1119, roughness:0.95, metalness:0.1});
+const floor = new THREE.Mesh(floorGeo, floorMat); floor.rotation.x = -Math.PI/2; floor.position.y = -0.01; scene.add(floor);
+
+function radialTexture(hex){
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const g = c.getContext('2d');
+  const col = new THREE.Color(hex);
+  const r = Math.round(col.r*255), gg = Math.round(col.g*255), b = Math.round(col.b*255);
+  const grad = g.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0, `rgba(${r},${gg},${b},1)`);
+  grad.addColorStop(0.4, `rgba(${r},${gg},${b},.5)`);
+  grad.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+  g.fillStyle = grad; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+
+/* Ombre de contact factice */
+const shadowTex = radialTexture(0x000000);
+const shadowMat = new THREE.SpriteMaterial({map:shadowTex, color:0x000000, opacity:0.5, transparent:true, depthWrite:false});
+const shadowSpr = new THREE.Sprite(shadowMat); shadowSpr.scale.set(3.4,3.4,1);
+shadowSpr.position.set(0,0.02,0); shadowSpr.material.rotation = 0;
+const shadowMesh = new THREE.Mesh(new THREE.CircleGeometry(1.7,40),
+  new THREE.MeshBasicMaterial({map:shadowTex, transparent:true, opacity:0.55, depthWrite:false, color:0x000000}));
+shadowMesh.rotation.x = -Math.PI/2; shadowMesh.position.y = 0.015; scene.add(shadowMesh);
+
+/* ---------- Le corps (Body) ---------- */
+const matMetal = new THREE.MeshStandardMaterial({color:0x9aa6b8, metalness:0.9, roughness:0.38});
+const matDark  = new THREE.MeshStandardMaterial({color:0x2a333f, metalness:0.7, roughness:0.5});
+const matAccent= new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.3, roughness:0.4});
+
+function segment(len, r0, r1){
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 22), matMetal);
+  m.position.y = len/2; g.add(m);
+  return g;
+}
+function joint(r){ return new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), matDark); }
+function ring(r){ const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 10, 28), matAccent); t.rotation.x = Math.PI/2; return t; }
+
+const root = new THREE.Group(); scene.add(root);
+
+// Socle
+const base = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.4, 32), matDark);
+base.position.y = 0.2; root.add(base);
+base.add(ring(1.0));
+
+// Tourelle (yaw)
+const yawG = new THREE.Group(); yawG.position.y = 0.4; root.add(yawG);
+const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.85,0.55,24), matMetal);
+turret.position.y = 0.27; yawG.add(turret);
+
+// Épaule (pitch)
+const shoulderG = new THREE.Group(); shoulderG.position.y = 0.62; yawG.add(shoulderG);
+shoulderG.add(joint(0.42));
+const upper = segment(2.15, 0.34, 0.26); shoulderG.add(upper);
+
+// Coude (pitch)
+const elbowG = new THREE.Group(); elbowG.position.y = 2.15; upper.add(elbowG);
+elbowG.add(joint(0.34));
+const fore = segment(1.9, 0.27, 0.2); elbowG.add(fore);
+
+// Poignet (pitch/yaw/roll) = base de la "tête"
+const wristG = new THREE.Group(); wristG.position.y = 1.9; wristG.rotation.order = 'YXZ'; fore.add(wristG);
+wristG.add(joint(0.26));
+
+// Tête expressive (caméra + œil)
+const headG = new THREE.Group(); wristG.add(headG);
+const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.34,0.62,20), matMetal);
+housing.position.y = 0.36; headG.add(housing);
+// "oreilles"/capteurs
+[-1,1].forEach(s=>{
+  const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.34,10), matDark);
+  ear.position.set(s*0.3, 0.42, 0); ear.rotation.z = s*0.5; headG.add(ear);
+});
+const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.2,0.045,10,24), matDark);
+bezel.position.y = 0.66; bezel.rotation.x = Math.PI/2; headG.add(bezel);
+const eyeMat = new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:1.3, roughness:0.3});
+const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), eyeMat);
+eye.position.y = 0.7; headG.add(eye);
+const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({map:radialTexture(0x34d3ee), color:0x34d3ee, transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending}));
+glowSpr.scale.set(1.1,1.1,1); glowSpr.position.y = 0.7; headG.add(glowSpr);
+const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.y = 0.7; headG.add(eyeLight);
+
+/* ---------- Gestes ---------- */
+const GESTURES = {
+  yes:     {dur:1.5, fn:(p,o)=>{ o.wristPitch += Math.sin(p*Math.PI*3)*0.55*Math.sin(p*Math.PI); }},
+  no:      {dur:1.4, fn:(p,o)=>{ o.wristYaw   += Math.sin(p*Math.PI*3)*0.62*Math.sin(p*Math.PI); }},
+  tilt:    {dur:1.9, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.wristRoll += 0.5*e; o.wristPitch += 0.14*e; }},
+  greet:   {dur:1.9, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.shoulder += -0.28*e; o.wristPitch += Math.sin(p*Math.PI*4)*0.42*e; }},
+  happy:   {dur:1.7, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.wristRoll += Math.sin(p*Math.PI*6)*0.36*e; o.headBob += Math.sin(p*Math.PI*8)*0.13*e; o.shoulder += -0.1*e; }},
+  confused:{dur:2.0, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.wristRoll += 0.42*e; o.wristYaw += Math.sin(p*Math.PI*2)*0.22*e; o.shoulder += -0.12*e; }},
+  stretch: {dur:2.6, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.shoulder += -0.42*e; o.wristPitch += 0.4*e; o.elbow += -0.3*e; }},
+  startle: {dur:0.9, fn:(p,o)=>{ const e=Math.sin(p*Math.PI); o.shoulder += -0.32*e; o.wristPitch += -0.3*e; }}
+};
+let activeGestures = [];
+function trigger(name){ const d = GESTURES[name]; if(d) activeGestures.push({d, t:0}); }
+
+/* ---------- Le cerveau (Brain) ---------- */
+const brain = {
+  awake:true,
+  state:'idle',
+  energy:0.9, curiosity:0.4, boredom:0.0,
+  attention:{x:0, y:0},          // cible du regard, normalisée
+  autonomy:true, ai:null,        // ai = couche LLM (claude.use('sample')) ou null -> réflexes
+  lastInteract:0, nextDecision:2.5,
+};
+const EYE_COLORS = { sleep:0x14324a, idle:0x34d3ee, attentive:0x34d3ee, curious:0xf5a623, happy:0x38e08a, confused:0xff5d5d };
+const STATE_FR = { sleep:'en veille', idle:'au repos', attentive:'attentif', curious:'curieux', happy:'content', confused:'perplexe' };
+
+/* Journal par couche */
+const logEl = document.getElementById('log');
+function stamp(){ const d=new Date(); return String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0'); }
+function log(layer, msg){
+  const row = document.createElement('div'); row.className='row';
+  row.innerHTML = `<span class="ts">${stamp()}</span><span class="tag tag-${layer}">${layer.toUpperCase()}</span><span class="msg"></span>`;
+  row.querySelector('.msg').textContent = msg;
+  logEl.prepend(row);
+  while(logEl.children.length>40) logEl.removeChild(logEl.lastChild);
+}
+
+/* Pensée affichée (petit effet machine à écrire) */
+const thoughtEl = document.getElementById('thought');
+let thoughtTimer = null;
+function think(text){
+  if(thoughtTimer) clearInterval(thoughtTimer);
+  let i=0; thoughtEl.innerHTML='<span class="cursor"></span>';
+  thoughtTimer = setInterval(()=>{
+    i++; thoughtEl.innerHTML = text.slice(0,i).replace(/</g,'&lt;') + '<span class="cursor"></span>';
+    if(i>=text.length){ clearInterval(thoughtTimer); thoughtTimer=null; }
+  }, 24);
+}
+
+function setState(s){
+  if(brain.state===s) return;
+  brain.state = s;
+  document.getElementById('stateLabel').textContent = STATE_FR[s];
+  const col = EYE_COLORS[s];
+  document.getElementById('stateDot').style.color = '#'+new THREE.Color(col).getHexString();
+  document.getElementById('moodLabel').textContent = STATE_FR[s];
+  document.getElementById('moodLabel').style.color = brain.awake ? '#'+new THREE.Color(col).getHexString() : 'var(--dim)';
+}
+
+function react(kind){ // transitions courtes déclenchées par le dialogue/actions
+  brain.lastInteract = clock; brain.boredom = Math.max(0, brain.boredom-0.5);
+  if(kind==='yes'){ setState('happy'); trigger('yes'); }
+  else if(kind==='no'){ setState('confused'); trigger('no'); }
+  else if(kind==='greet'){ setState('happy'); brain.energy=Math.min(1,brain.energy+0.1); trigger('greet'); }
+  else if(kind==='happy'){ setState('happy'); brain.energy=Math.min(1,brain.energy+0.12); trigger('happy'); }
+  else if(kind==='curious'){ setState('curious'); brain.curiosity=Math.min(1,brain.curiosity+0.2); trigger('tilt'); }
+  setTimeout(()=>{ if(brain.awake && brain.state!=='sleep') setState('attentive'); }, 1900);
+}
+
+/* ---------- Couche DIALOGUE (en couches) ----------
+   Routeur : la couche IA (Claude) interprète et décide quand elle est
+   disponible ; sinon on retombe sur les réflexes scriptés. C'est l'ancien
+   SEAM, désormais branché. */
+function interpret(raw){
+  if(!raw.trim()) return;
+  log('dialogue', '« '+raw+' »');
+  if(!brain.awake) wake(true);
+  if(brain.ai) aiRespond(raw);
+  else interpretScripted(raw);
+}
+
+/* Repli scripté (règles) : le socle nerveux quand l'IA est absente ou refusée */
+function interpretScripted(raw){
+  const t = raw.toLowerCase().trim();
+  if(!t) return;
+  if(/(bonjour|salut|coucou|hey|hello|bonsoir)/.test(t)){
+    react('greet'); think('Bonjour ! Content de te voir.'); return;
+  }
+  if(/(bravo|super|g[ée]nial|bien jou[ée]|merci|gentil|parfait)/.test(t)){
+    react('happy'); think('Merci ! Ça me fait plaisir.'); return;
+  }
+  if(/(danse|bouge|remue|amuse)/.test(t)){
+    react('happy'); think('Regarde ça !'); return;
+  }
+  if(/(dors|dodo|repos|veille|pause)/.test(t)){
+    sleep(); return;
+  }
+  if(/(r[ée]veille|debout|l[eè]ve|wake)/.test(t)){
+    wake(true); think('Je suis réveillé.'); return;
+  }
+  if(t.includes('?')){
+    // question fermée -> il répond par hochement, avec une "humeur"
+    const yes = Math.random() < (0.45 + brain.energy*0.25);
+    if(yes){ react('yes'); think('Oui.'); log('decision','question -> réponse OUI'); }
+    else   { react('no');  think('Non.'); log('decision','question -> réponse NON'); }
+    return;
+  }
+  // Défaut (mode réflexe) : pas de compréhension fine sans la couche IA
+  react('curious');
+  think('En réflexes seuls, je ne saisis pas tout.');
+  log('decision','énoncé non reconnu (mode réflexe)');
+}
+
+/* ---------- Couche IA (LLM via claude.use('sample')) ----------
+   ARIA interroge Claude sur le compte du visiteur. Aucune clé, aucun
+   serveur. On demande une DÉCISION structurée (état + geste + phrase),
+   pas un long texte : le corps reste le moyen d'expression principal. */
+const AI_PERSONA =
+  "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur et attachant, "+
+  "dans l'esprit d'un bras assistant de génie (façon 'Dummy'). Tu ne discutes pas "+
+  "longuement, tu t'exprimes surtout par gestes et hochements de tête. Tu réponds "+
+  "toujours en français, sans tiret cadratin.";
+
+function buildAIPrompt(raw){
+  const s = "État interne : éveil="+(brain.awake?'oui':'non')+
+    ", énergie="+brain.energy.toFixed(2)+", curiosité="+brain.curiosity.toFixed(2)+
+    ", ennui="+brain.boredom.toFixed(2)+", humeur="+brain.state+".";
+  return AI_PERSONA+"\n\n"+s+
+    "\n\nL'humain te dit : \""+raw.replace(/"/g,"'")+"\"\n\n"+
+    "Décide de ta réaction. Réponds UNIQUEMENT par un objet JSON, rien d'autre :\n"+
+    '{"state":"...","gesture":"...","say":"...","sleep":false}\n'+
+    "- state parmi : idle, attentive, curious, happy, confused\n"+
+    "- gesture parmi : yes, no, tilt, greet, happy, confused, stretch, none\n"+
+    "  (yes = hoche « oui », no = hoche « non », tilt = penche la tête, greet = salue)\n"+
+    "- say : courte phrase (max 12 mots) de ce qu'ARIA pense/dit\n"+
+    "- sleep : true seulement s'il te demande de te reposer/dormir\n"+
+    "Pour une question fermée, choisis yes ou no selon ton humeur et réponds brièvement.";
+}
+
+async function aiRespond(raw){
+  const ai = brain.ai; if(!ai) return interpretScripted(raw);
+  showThinking(); setState('attentive');
+  try{
+    const d = await ai.json(buildAIPrompt(raw), {modelTier:'quick', cache:false});
+    applyAI(d);
+  }catch(e){
+    const code = e && e.code;
+    if(code==='not_granted'||code==='sampling_disabled'||code==='not_declared'||code==='capability_disabled'||code==='capability_removed'){
+      brain.ai=null; setAIStatus(false);
+      log('etat','couche IA indisponible -> repli réflexes'); interpretScripted(raw);
+    } else if(code==='rate_limited'){
+      setState('confused'); think("Trop de questions d'un coup, laisse-moi souffler.");
+      log('decision','IA saturée (rate limit)');
+    } else if(code==='refused'){
+      setState('confused'); think("Je préfère ne pas répondre à ça.");
+      log('decision','IA a décliné');
+    } else {
+      log('decision','IA en erreur ('+(code||'?')+') -> repli réflexes'); interpretScripted(raw);
+    }
+  }
+}
+
+function applyAI(d){
+  if(!d || typeof d!=='object'){ interpretScripted(''); return; }
+  brain.lastInteract=clock; brain.boredom=Math.max(0, brain.boredom-0.5);
+  const say = typeof d.say==='string' ? d.say : '';
+  if(d.sleep===true){ if(say) think(say); log('dialogue','IA -> repos'); setTimeout(()=>sleep(), 700); return; }
+  const st = ['idle','attentive','curious','happy','confused'].includes(d.state) ? d.state : 'attentive';
+  setState(st);
+  const g = d.gesture;
+  if(typeof g==='string' && GESTURES[g]) trigger(g);
+  if(say) think(say);
+  if(g==='happy'||g==='greet') brain.energy=Math.min(1, brain.energy+0.08);
+  log('dialogue','IA -> '+st+(GESTURES[g]?' + '+g:''));
+  setTimeout(()=>{ if(brain.awake && brain.state===st) setState('attentive'); }, 2200);
+}
+
+function showThinking(){
+  if(thoughtTimer){ clearInterval(thoughtTimer); thoughtTimer=null; }
+  thoughtEl.innerHTML = '<span style="color:var(--muted)">réfléchit</span><span class="cursor"></span>';
+}
+function setAIStatus(on){
+  const chip = document.getElementById('aiChip'); if(!chip) return;
+  chip.textContent = on ? 'IA en ligne' : 'réflexes seuls';
+  chip.classList.toggle('on', !!on);
+}
+
+/* Actions haut niveau */
+function greet(){ log('decision','salutation reçue'); react('greet'); think('Salut ! 👋'); }
+function askDemo(){
+  const yes = Math.random()<0.5;
+  log('decision','démonstration : réponse par hochement');
+  if(yes){ react('yes'); think('(hoche la tête) Oui.'); }
+  else   { react('no');  think('(hoche la tête) Non.'); }
+}
+function praise(){ log('dialogue','félicitation'); react('happy'); think('Merci ! 😄'); }
+function sleep(){
+  brain.awake=false; setState('sleep'); think('Je me mets en veille... 🌙');
+  log('etat','passage en veille');
+}
+function wake(byUser){
+  if(brain.awake) { if(byUser){ trigger('startle'); setState('attentive'); react('curious'); } return; }
+  brain.awake=true; brain.energy=Math.max(brain.energy,0.5);
+  setState('attentive'); trigger('startle');
+  think(byUser ? 'Oh ! Tu es là.' : 'Je me réveille.');
+  log('etat','réveil'+(byUser?' (sollicité)':''));
+}
+
+/* Couche délibérative : décisions spontanées (stub règle-based, seam LLM) */
+function decide(){
+  if(!brain.autonomy || !brain.awake) return;
+  brain.nextDecision = 3 + Math.random()*4;
+
+  if(brain.energy < 0.16){ log('decision','énergie basse -> mise en veille'); sleep(); return; }
+
+  if(brain.boredom > 0.8){
+    brain.boredom = 0.2;
+    setState('curious'); trigger('tilt');
+    think('Tu es toujours là ?');
+    log('decision','ennui élevé -> cherche l\'attention');
+    setTimeout(()=>{ if(brain.awake) setState('idle'); }, 2000);
+    return;
+  }
+  // micro-comportements d'oisiveté
+  const roll = Math.random();
+  if(roll < 0.4){
+    brain.attention.x = (Math.random()*2-1)*0.9;
+    brain.attention.y = (Math.random()*2-1)*0.6;
+    setState('idle');
+    log('reflexe','balaye l\'atelier du regard');
+  } else if(roll < 0.62){
+    trigger('stretch'); setState('idle'); log('reflexe','s\'étire');
+  } else if(roll < 0.78){
+    trigger('tilt'); setState('curious');
+    think('Hmm.'); log('decision','observe quelque chose');
+    setTimeout(()=>{ if(brain.awake) setState('idle'); }, 1600);
+  } else {
+    setState('idle');
+  }
+}
+
+/* ---------- Boucle ---------- */
+const pose = { yaw:0, shoulder:-0.45, elbow:1.15, wristX:-0.3, wristY:0, wristZ:0 };
+const cur  = Object.assign({}, pose);
+let clock = 0, last = performance.now();
+
+function targetPose(){
+  if(brain.awake){
+    const a = brain.attention;
+    return { yaw:a.x*0.85, shoulder:-0.45 - a.y*0.35, elbow:1.15,
+             wristX:-0.32 + a.y*0.55, wristY:a.x*0.28, wristZ:0 };
+  }
+  return { yaw:cur.yaw*0.95, shoulder:0.55, elbow:1.95, wristX:0.82, wristY:0, wristZ:0.16 };
+}
+
+function frame(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now; clock += dt;
+
+  // Couches temporelles
+  brain.energy = Math.max(0, brain.energy - dt*0.006);
+  if(brain.awake){
+    brain.boredom = Math.min(1, brain.boredom + dt*0.03);
+    brain.curiosity = Math.max(0.15, brain.curiosity - dt*0.02);
+  }
+  brain.nextDecision -= dt;
+  if(brain.nextDecision <= 0) decide();
+
+  // Pose cible -> easing
+  const tp = targetPose();
+  const k = 1 - Math.pow(0.0025, dt); // easing exp indépendant du framerate
+  for(const key in pose){ cur[key] += (tp[key]-cur[key]) * k; }
+
+  // Gestes (offsets)
+  const off = {yaw:0, shoulder:0, elbow:0, wristPitch:0, wristYaw:0, wristRoll:0, headBob:0};
+  activeGestures = activeGestures.filter(g=>{
+    g.t += dt; const p = g.t/g.d.dur; if(p>=1) return false; g.d.fn(p, off); return true;
+  });
+
+  // Respiration
+  const breathe = REDUCED ? 0 : Math.sin(clock*1.4)*0.02 * (brain.awake?1:0.3);
+
+  // Application
+  yawG.rotation.y      = cur.yaw + off.yaw;
+  shoulderG.rotation.x = cur.shoulder + off.shoulder + breathe;
+  elbowG.rotation.x    = cur.elbow + off.elbow - breathe*0.5;
+  wristG.rotation.x    = cur.wristX + off.wristPitch + off.headBob;
+  wristG.rotation.y    = cur.wristY + off.wristYaw;
+  wristG.rotation.z    = cur.wristZ + off.wristRoll;
+
+  // Œil : couleur + pulsation + clignement
+  const col = new THREE.Color(EYE_COLORS[brain.state]);
+  eyeMat.color.lerp(col, 0.1); eyeMat.emissive.lerp(col, 0.1);
+  glowSpr.material.color.lerp(col, 0.1); eyeLight.color.lerp(col, 0.1);
+  const blinkPhase = Math.sin(clock*2.2);
+  const doBlink = (!REDUCED && Math.sin(clock*0.7) > 0.985) ? 0.15 : 1;
+  const pulse = brain.awake ? (0.85 + 0.15*Math.max(0,blinkPhase)) : 0.3;
+  eyeMat.emissiveIntensity = 1.3*pulse*doBlink;
+  glowSpr.material.opacity = (brain.awake?0.9:0.35)*pulse*doBlink;
+  eyeLight.intensity = (brain.awake?0.7:0.15)*pulse*doBlink;
+  glowSpr.scale.setScalar(1.0 + 0.12*Math.max(0,blinkPhase)*(brain.awake?1:0.3));
+
+  // Meters
+  mE.style.width = (brain.energy*100)+'%';
+  mC.style.width = (brain.curiosity*100)+'%';
+  mB.style.width = (brain.boredom*100)+'%';
+
+  // Caméra orbitale
+  const s = orbit;
+  camera.position.set(
+    s.target.x + s.r*Math.sin(s.phi)*Math.sin(s.theta),
+    s.target.y + s.r*Math.cos(s.phi),
+    s.target.z + s.r*Math.sin(s.phi)*Math.cos(s.theta)
+  );
+  camera.lookAt(s.target);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+const mE=document.getElementById('mEnergy'), mC=document.getElementById('mCurio'), mB=document.getElementById('mBore');
+
+/* ---------- Entrées ---------- */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+let dragging=false, lastX=0, lastY=0, moved=0;
+canvas.addEventListener('pointerdown', e=>{
+  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY;
+  canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e=>{
+  if(dragging){
+    const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+    moved += Math.abs(dx)+Math.abs(dy);
+    orbit.theta -= dx*0.006;
+    orbit.phi = Math.max(0.3, Math.min(1.5, orbit.phi - dy*0.006));
+  } else if(brain.awake){
+    // suivi du regard
+    const nx = (e.clientX/window.innerWidth)*2-1;
+    const ny = (e.clientY/window.innerHeight)*2-1;
+    brain.attention.x = Math.max(-1,Math.min(1, nx*1.1));
+    brain.attention.y = Math.max(-0.8,Math.min(0.8, ny*0.9));
+    if(brain.state==='idle'){ setState('attentive'); }
+    brain.lastInteract = clock; brain.boredom = Math.max(0, brain.boredom-dt0());
+  }
+});
+function dt0(){ return 0.004; }
+canvas.addEventListener('pointerup', e=>{
+  dragging=false; canvas.classList.remove('dragging');
+  if(moved < 6){ // clic simple = on le sollicite
+    wake(true);
+    log('reflexe','sollicité par contact');
+    setState('attentive');
+    brain.boredom = 0;
+  }
+});
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  orbit.r = Math.max(4.5, Math.min(16, orbit.r + Math.sign(e.deltaY)*0.6));
+}, {passive:false});
+
+/* Dock */
+document.querySelectorAll('button.act').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const c = b.dataset.cmd;
+    if(c==='greet') greet();
+    else if(c==='ask') askDemo();
+    else if(c==='praise') praise();
+    else if(c==='sleep'){ brain.awake ? sleep() : wake(true); }
+  });
+});
+const autoSw = document.getElementById('autoSw');
+autoSw.addEventListener('click', ()=>{
+  brain.autonomy = !brain.autonomy;
+  autoSw.classList.toggle('on', brain.autonomy);
+  log('etat', 'autonomie '+(brain.autonomy?'activée':'désactivée'));
+});
+const sayIn = document.getElementById('say');
+function send(){ const v=sayIn.value; if(!v.trim()) return; interpret(v); sayIn.value=''; }
+document.getElementById('sayBtn').addEventListener('click', send);
+sayIn.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
+
+/* ---------- Démarrage ---------- */
+setState('idle');
+log('etat','systèmes en ligne');
+log('reflexe','calibration des articulations... ok');
+log('decision','couche délibérative active');
+think('Atelier en ligne. Je regarde autour de moi.');
+requestAnimationFrame(frame);
+
+/* Connexion de la couche IA (facultative : repli réflexes si absente/refusée) */
+(async function initAI(){
+  if(!(window.claude && window.claude.use)){ setAIStatus(false); return; }
+  try{
+    const s = await window.claude.use('sample');
+    brain.ai = s || null;
+    setAIStatus(!!s);
+    log('etat', s ? 'couche IA connectée (Claude)' : 'couche IA absente -> réflexes seuls');
+    if(s) think('Cerveau IA en ligne. Parle-moi, je comprends.');
+  }catch(_){ brain.ai=null; setAIStatus(false); }
+})();
+})();
+</script>

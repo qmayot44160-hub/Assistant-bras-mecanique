@@ -1,0 +1,16 @@
+# Python (cerveau à venir)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+
+# Node (si outillage web plus tard)
+node_modules/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
