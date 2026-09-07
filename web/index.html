@@ -380,16 +380,34 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.setClearColor(0x0a0d13, 1);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0a0d13, 12, 30);
+scene.fog = new THREE.Fog(0x0a0d13, 16, 40);
+
+// Environnement de reflets (studio procédural) : c'est ce qui rend le métal argent/chrome
+function makeEnvTexture(){
+  const c=document.createElement('canvas'); c.width=32; c.height=128; const g=c.getContext('2d');
+  const grd=g.createLinearGradient(0,0,0,128);
+  grd.addColorStop(0.00,'#9fb4d6');  // ciel clair (reflet haut lumineux)
+  grd.addColorStop(0.34,'#5a6a82');
+  grd.addColorStop(0.50,'#2a323d');  // horizon
+  grd.addColorStop(0.52,'#171c23');
+  grd.addColorStop(1.00,'#0a0d13');  // sol sombre
+  g.fillStyle=grd; g.fillRect(0,0,32,128);
+  // bande "softbox" brillante pour des reflets marqués
+  g.fillStyle='rgba(255,255,255,0.5)'; g.fillRect(0,18,32,10);
+  const t=new THREE.CanvasTexture(c); t.mapping=THREE.EquirectangularReflectionMapping; return t;
+}
+const _pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = _pmrem.fromEquirectangular(makeEnvTexture()).texture;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 const orbit = {theta:0.7, phi:1.0, r:12, target:new THREE.Vector3(0,3,0)};
 
 /* Lumières */
-scene.add(new THREE.HemisphereLight(0x9fc4ff, 0x0a0d13, 0.55));
-const key = new THREE.DirectionalLight(0xffffff, 0.85); key.position.set(5,9,4); scene.add(key);
-const rimC = new THREE.PointLight(0x34d3ee, 0.7, 26); rimC.position.set(-6,3,-3); scene.add(rimC);
-const rimA = new THREE.PointLight(0xf5a623, 0.4, 22); rimA.position.set(5,1.5,-5); scene.add(rimA);
+scene.add(new THREE.HemisphereLight(0xbcd2f0, 0x141a22, 0.85));
+const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(5,9,4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5); fill.position.set(-6,4,6); scene.add(fill);
+const rimC = new THREE.PointLight(0x34d3ee, 0.8, 30); rimC.position.set(-6,3,-3); scene.add(rimC);
+const rimA = new THREE.PointLight(0xf5a623, 0.45, 24); rimA.position.set(5,1.5,-5); scene.add(rimA);
 
 /* Sol : grille holo + disque */
 const grid = new THREE.GridHelper(40, 40, 0x2b4a63, 0x16222f);
@@ -421,9 +439,9 @@ const shadowMesh = new THREE.Mesh(new THREE.CircleGeometry(2.3,44),
 shadowMesh.rotation.x = -Math.PI/2; shadowMesh.position.y = 0.015; scene.add(shadowMesh);
 
 /* ---------- Le corps (Body) : bras industriel 6 axes ---------- */
-const matMetal = new THREE.MeshStandardMaterial({color:0xc2cad6, metalness:0.95, roughness:0.3});   // métal brossé clair
-const matGrey  = new THREE.MeshStandardMaterial({color:0x8b93a0, metalness:0.85, roughness:0.45});  // panneaux
-const matDark  = new THREE.MeshStandardMaterial({color:0x232a33, metalness:0.75, roughness:0.5});   // articulations
+const matMetal = new THREE.MeshStandardMaterial({color:0xdfe4ec, metalness:0.9, roughness:0.28, envMapIntensity:1.4});  // métal chrome clair
+const matGrey  = new THREE.MeshStandardMaterial({color:0xaab2c0, metalness:0.8, roughness:0.4, envMapIntensity:1.2});   // panneaux
+const matDark  = new THREE.MeshStandardMaterial({color:0x39424e, metalness:0.7, roughness:0.45, envMapIntensity:1.0});  // articulations
 const matHose  = new THREE.MeshStandardMaterial({color:0x14181d, metalness:0.1, roughness:0.85});   // câbles/gaines
 const matAccent= new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.3, roughness:0.4});
 
@@ -461,8 +479,8 @@ shoulderG.add(axis(0.5,1.3,matDark,'shoulder'));       // gros axe horizontal
 // Bras supérieur (poutre)
 const L1=2.4;
 const upper = new THREE.Group(); shoulderG.add(upper);
-const upperBeam = box(0.62,L1,0.5,matMetal,'upper'); upperBeam.position.y=L1/2; upper.add(upperBeam);
-[-0.32,0.32].forEach(x=>{ const rail=box(0.06,L1*0.92,0.56,matGrey,'upper'); rail.position.set(x,L1/2,0); upper.add(rail); });
+const upperBeam = box(0.82,L1,0.64,matMetal,'upper'); upperBeam.position.y=L1/2; upper.add(upperBeam);
+[-0.42,0.42].forEach(x=>{ const rail=box(0.07,L1*0.92,0.7,matGrey,'upper'); rail.position.set(x,L1/2,0); upper.add(rail); });
 upper.add(hose([[-0.34,0.15,-0.28],[-0.28,0.9,-0.34],[-0.3,1.7,-0.3],[-0.26,2.25,-0.24]],0.06)); // gaine dorsale
 
 // Coude (pitch)
@@ -473,8 +491,8 @@ elbowG.add(axis(0.42,1.05,matDark,'elbow'));
 // Avant-bras (poutre)
 const L2=2.0;
 const fore = new THREE.Group(); elbowG.add(fore);
-const foreBeam = box(0.5,L2,0.42,matMetal,'forearm'); foreBeam.position.y=L2/2; fore.add(foreBeam);
-[-0.26,0.26].forEach(x=>{ const rail=box(0.05,L2*0.9,0.48,matGrey,'forearm'); rail.position.set(x,L2/2,0); fore.add(rail); });
+const foreBeam = box(0.66,L2,0.54,matMetal,'forearm'); foreBeam.position.y=L2/2; fore.add(foreBeam);
+[-0.34,0.34].forEach(x=>{ const rail=box(0.06,L2*0.9,0.6,matGrey,'forearm'); rail.position.set(x,L2/2,0); fore.add(rail); });
 fore.add(hose([[0.28,0.15,-0.22],[0.24,0.8,-0.26],[0.26,1.5,-0.22],[0.22,1.9,-0.18]],0.05));
 
 // Poignet (pitch/yaw/roll)
