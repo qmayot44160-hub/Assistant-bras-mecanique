@@ -260,6 +260,30 @@
   @media (prefers-reduced-motion: reduce){
     .fx-scan,.fx-reticle span,.boot-ring,.zoom::after,.sheet-head::after,.sheet.open .sheet-body>*{animation:none!important}
   }
+
+  /* Ligne de connexion pièce -> fiche */
+  .fx-leader{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;transition:opacity .25s}
+  .fx-leader line{stroke:var(--cyan);stroke-width:1.3;stroke-dasharray:4 5;opacity:.75}
+  .fx-leader circle{fill:var(--cyan)}
+  /* Télémétrie live */
+  .telemetry{position:fixed;left:20px;top:50%;transform:translateY(-50%);z-index:2;
+    font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);padding:12px 14px;min-width:158px;backdrop-filter:blur(10px);
+    --cut:10px;clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut))}
+  .telemetry .tl-h{font-family:var(--disp);font-size:10px;letter-spacing:.18em;color:var(--dim);margin-bottom:8px}
+  .telemetry .tl-row{display:flex;justify-content:space-between;gap:14px;padding:2px 0}
+  .telemetry .tl-row b{color:var(--cyan);font-weight:500;font-variant-numeric:tabular-nums}
+  .telemetry .tl-bar{height:5px;border-radius:99px;background:rgba(255,255,255,.08);margin-top:9px;overflow:hidden}
+  .telemetry .tl-bar>i{display:block;height:100%;background:var(--cyan);width:50%;transition:width .4s ease}
+  .act.active{background:rgba(52,211,238,.16);border-color:var(--cyan);color:var(--cyan)}
+  /* Mode Or (Mark) : bascule l'accent partout où var(--cyan) est utilisé */
+  :root.gold{--cyan:#f5b83d}
+  .gold .fx-frame i{border-color:rgba(245,184,61,.5)}
+  .gold .fx-scan{background:linear-gradient(90deg,transparent,rgba(245,184,61,.55),transparent)}
+  .gold .fx-reticle span{border-color:rgba(245,184,61,.12)}
+  .gold .hlabel{color:#f5b83d;border-color:rgba(245,184,61,.5);box-shadow:0 0 16px rgba(245,184,61,.25)}
+  .gold .act.active{background:rgba(245,184,61,.16)}
+  @media (max-width:900px){ .telemetry{display:none} .fx-leader{display:none} }
 </style>
 
 <canvas id="scene"></canvas>
@@ -269,6 +293,22 @@
 <div class="fx-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="hlabel" id="hlabel" hidden></div>
 <div class="boot" id="boot"><div class="boot-ring"></div><div class="boot-t">A R I A</div><div class="boot-s">initialisation des systèmes</div></div>
+
+<svg class="fx-leader" id="leader" aria-hidden="true">
+  <line id="leaderLine"></line>
+  <circle id="leaderDot" r="4"></circle>
+  <circle id="leaderAnchor" r="3"></circle>
+</svg>
+
+<div class="telemetry" id="telemetry" aria-hidden="true">
+  <div class="tl-h">TÉLÉMÉTRIE</div>
+  <div class="tl-row"><span>ÉTAT</span><b id="tlState">-</b></div>
+  <div class="tl-row"><span>YAW</span><b id="tlYaw">0°</b></div>
+  <div class="tl-row"><span>ÉPAULE</span><b id="tlSh">0°</b></div>
+  <div class="tl-row"><span>COUDE</span><b id="tlEl">0°</b></div>
+  <div class="tl-row"><span>POIGNET</span><b id="tlWr">0°</b></div>
+  <div class="tl-bar"><i id="tlPwr"></i></div>
+</div>
 
 <div class="hud topbar">
   <div class="brand">
@@ -311,6 +351,8 @@
     <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
     <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
+    <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
+    <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
     <span class="aichip" id="aiChip">IA…</span>
     <div class="toggle">autonomie<div class="sw on" id="autoSw"><i></i></div></div>
   </div>
@@ -452,6 +494,7 @@ function setHover(id){
   if(hoverPart && hoverPart!==focusPart) applyMat(hoverPart, null);
   hoverPart=id;
   if(id && id!==focusPart) applyMat(id, hoverMat);
+  if(id) sfx('hover');
 }
 function setFocus(id){
   if(focusPart && focusPart!==id) applyMat(focusPart, null);
@@ -859,6 +902,7 @@ function frame(now){
     s.target.z + s.r*Math.sin(s.phi)*Math.cos(s.theta)
   );
   camera.lookAt(s.target);
+  updateLeader(); updateTelemetry();
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -879,7 +923,7 @@ function hideHoverLabel(){ if(hlabel) hlabel.hidden=true; }
 
 let dragging=false, lastX=0, lastY=0, moved=0;
 canvas.addEventListener('pointerdown', e=>{
-  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY; camTween=null;   // reprise du contrôle
+  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY; camTween=null; ensureAudio();   // reprise du contrôle + déblocage audio
   canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e=>{
@@ -928,6 +972,7 @@ canvas.addEventListener('wheel', e=>{
 document.querySelectorAll('button.act').forEach(b=>{
   b.addEventListener('click', ()=>{
     const c = b.dataset.cmd;
+    ensureAudio(); if(c) sfx('click');
     if(c==='parts'){ openCatalogue(); return; }
     if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
       if(c==='greet') serverSend({type:'say', text:'bonjour'});
@@ -1014,7 +1059,7 @@ function pickPart(x,y){ const h=pickHit(x,y); return h ? h.id : null; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
 function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
-function closeSheet(){ sheetEl.classList.remove('open'); setFocus(null); resetView(); }
+function closeSheet(){ sheetEl.classList.remove('open'); setFocus(null); resetView(); sfx('close'); }
 
 function openCatalogue(){
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
@@ -1040,6 +1085,7 @@ function openPartSheet(id, point){
   setFocus(id);
   const fp = point || partCenter(id);
   if(fp){ focusOn(fp); scanRing(fp); }
+  sfx('focus');
 }
 
 function kvRows(o){
@@ -1213,6 +1259,77 @@ sheetEl.addEventListener('click', e=>{
   else if(a==='save') savePart(t.dataset.id);
   else if(a==='del'){ if(confirm('Supprimer cette pièce ?')) deletePart(t.dataset.id); }
 });
+
+/* ---------- DA JARVIS : sons, télémétrie, ligne de connexion, mode Or ---------- */
+// Sons d'interface synthétisés (aucun fichier, respecte l'autoplay : démarre au 1er clic)
+let audioCtx = null, soundOn = true;
+function ensureAudio(){ try{ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){} }
+function tone(freq, dur, type, gain){
+  if(!soundOn || !audioCtx) return;
+  const t=audioCtx.currentTime, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type||'sine'; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(gain||0.04,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+dur+0.02);
+}
+function sfx(name){
+  if(!soundOn || !audioCtx) return;
+  if(name==='hover') tone(880,0.05,'sine',0.015);
+  else if(name==='focus'){ tone(620,0.09,'triangle',0.05); setTimeout(()=>tone(960,0.12,'triangle',0.04),70); }
+  else if(name==='close'){ tone(520,0.08,'sine',0.04); setTimeout(()=>tone(340,0.12,'sine',0.03),55); }
+  else if(name==='click') tone(700,0.05,'square',0.025);
+}
+
+// Accent couleur (cyan <-> or) pour le 3D
+let goldOn = false;
+function setAccent(hex){
+  matAccent.color.setHex(hex); matAccent.emissive.setHex(hex);
+  hoverMat.emissive.setHex(hex); focusMat.emissive.setHex(hex);
+  EYE_COLORS.idle = hex; EYE_COLORS.attentive = hex;
+}
+function toggleGold(){
+  goldOn = !goldOn;
+  document.documentElement.classList.toggle('gold', goldOn);
+  setAccent(goldOn ? 0xf5b83d : 0x34d3ee);
+  const b=document.getElementById('goldBtn'); if(b) b.classList.toggle('active', goldOn);
+}
+
+// Télémétrie live (angles des articulations + énergie)
+const _tl = {s:document.getElementById('tlState'), y:document.getElementById('tlYaw'), sh:document.getElementById('tlSh'),
+             el:document.getElementById('tlEl'), wr:document.getElementById('tlWr'), pwr:document.getElementById('tlPwr')};
+function updateTelemetry(){
+  if(!_tl.s) return;
+  const deg = r => Math.round(r*57.2958) + '°';
+  _tl.s.textContent = STATE_FR[brain.state] || brain.state;
+  _tl.y.textContent = deg(cur.yaw); _tl.sh.textContent = deg(cur.shoulder);
+  _tl.el.textContent = deg(cur.elbow); _tl.wr.textContent = deg(cur.wristX);
+  _tl.pwr.style.width = (brain.energy*100) + '%';
+}
+
+// Ligne de connexion pièce -> fiche (projection 3D -> écran)
+const _leader=document.getElementById('leader'), _lLine=document.getElementById('leaderLine'),
+      _lDot=document.getElementById('leaderDot'), _lAnc=document.getElementById('leaderAnchor');
+function updateLeader(){
+  if(!_leader) return;
+  if(window.innerWidth<900 || !sheetEl.classList.contains('open') || !focusPart){ _leader.style.opacity=0; return; }
+  const c=partCenter(focusPart); if(!c){ _leader.style.opacity=0; return; }
+  camera.updateMatrixWorld(); c.project(camera);
+  if(c.z>1){ _leader.style.opacity=0; return; }   // derrière la caméra
+  const sx=(c.x*0.5+0.5)*window.innerWidth, sy=(-c.y*0.5+0.5)*window.innerHeight;
+  const rect=sheetEl.getBoundingClientRect(), ax=rect.right, ay=rect.top+52;
+  _leader.style.opacity=1;
+  _lLine.setAttribute('x1',ax); _lLine.setAttribute('y1',ay); _lLine.setAttribute('x2',sx); _lLine.setAttribute('y2',sy);
+  _lDot.setAttribute('cx',sx); _lDot.setAttribute('cy',sy); _lAnc.setAttribute('cx',ax); _lAnc.setAttribute('cy',ay);
+}
+
+// Boutons Son / Or
+(function(){
+  const sb=document.getElementById('soundBtn');
+  if(sb){ sb.classList.toggle('active', soundOn);
+    sb.addEventListener('click', ()=>{ soundOn=!soundOn; sb.classList.toggle('active', soundOn); if(soundOn){ ensureAudio(); sfx('focus'); } }); }
+  const gb=document.getElementById('goldBtn');
+  if(gb) gb.addEventListener('click', ()=>{ ensureAudio(); toggleGold(); sfx('click'); });
+})();
 
 /* ---------- Démarrage ---------- */
 partsInit();
