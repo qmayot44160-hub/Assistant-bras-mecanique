@@ -1,123 +1,103 @@
 """
-Cerveau LOCAL d'ARIA : un vrai modèle de langage qui tourne sur le serveur,
-sans aucun appel externe (pas de Claude, pas d'API).
+Cerveau LOCAL d'ARIA : un vrai modèle de langage qui tourne CHEZ TOI, via
+Ollama, sans aucun appel externe (pas de Claude, pas d'API cloud).
 
-Contrainte assumée : sur Railway (CPU, RAM limitée) on charge un petit modèle
-quantifié GGUF via llama.cpp (~0,5 Md de paramètres). Il « pense » vraiment
-(passage dans un réseau de neurones) mais reste modeste et lent.
+Pourquoi Ollama : c'est le moyen le plus simple de faire tourner un modèle
+open-source sur un PC Windows/Mac/Linux avec accélération GPU (ta RTX 2060).
+Tu installes Ollama, tu fais `ollama pull qwen2.5:7b`, et notre serveur lui
+parle en local sur http://127.0.0.1:11434.
 
-Design : le modèle GÉNÈRE la pensée/parole d'ARIA (une courte phrase). Notre
-code traduit ensuite ça en état + geste (heuristique). Ça joue sur la force
-d'un petit modèle (générer une phrase) au lieu de sa faiblesse (produire du
-JSON strict).
+Le modèle GÉNÈRE la pensée/parole d'ARIA (une phrase courte) ; notre code la
+traduit en état + geste. Aucune donnée ne sort de ta machine.
 
-Chargement en tâche de fond au démarrage : le serveur reste réactif, et tant
-que le modèle n'est pas prêt on retombe sur les réflexes scriptés. Robuste :
-toute erreur laisse simplement le cerveau local indisponible.
+Réglages (variables d'environnement) :
+  OLLAMA_HOST   (défaut http://127.0.0.1:11434)
+  OLLAMA_MODEL  (défaut qwen2.5:7b)
+
+Sur un serveur sans Ollama (ex. Railway), le ping échoue -> cerveau local
+indisponible -> repli automatique sur les règles scriptées. Rien ne casse.
 """
 
 from __future__ import annotations
+import json
 import os
-import threading
+import urllib.request
 
-MODEL_REPO = os.environ.get("LOCAL_MODEL_REPO", "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
-MODEL_FILE = os.environ.get("LOCAL_MODEL_FILE", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
-MODEL_DIR = os.environ.get("MODEL_DIR", "/data/models")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
 LOCAL_SYSTEM = (
     "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur, attachant. "
     "Tu réponds en français, en UNE seule phrase courte (max 15 mots), sans tiret cadratin. "
-    "Tu ne donnes pas de listes, pas d'explications longues : tu es un petit robot, pas un assistant."
+    "Pas de listes, pas d'explications longues : tu es un petit robot, pas un assistant."
 )
 
 _state = {"ready": False, "loading": False, "error": None}
-_llm = None
-_lock = threading.Lock()
 
 
 def status() -> dict:
-    return {"ready": _state["ready"], "loading": _state["loading"], "error": _state["error"],
-            "model": MODEL_FILE}
+    return {"ready": _state["ready"], "loading": _state["loading"],
+            "error": _state["error"], "host": OLLAMA_HOST, "model": OLLAMA_MODEL}
 
 
 def available() -> bool:
-    return _state["ready"] and _llm is not None
+    return _state["ready"]
 
 
-def _resolve_dir() -> str:
-    for d in (MODEL_DIR, os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "models")):
-        try:
-            os.makedirs(d, exist_ok=True)
-            t = os.path.join(d, ".wtest"); open(t, "w").close(); os.remove(t)
-            return d
-        except Exception:
-            continue
-    return "."
-
-
-def _load():
-    global _llm
+def _ping() -> bool:
     try:
-        from huggingface_hub import hf_hub_download
-        from llama_cpp import Llama
-        path = hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE, local_dir=_resolve_dir())
-        _llm = Llama(
-            model_path=path,
-            n_ctx=1024,
-            n_threads=max(2, (os.cpu_count() or 2)),
-            n_batch=64,
-            verbose=False,
-        )
-        _state["ready"] = True
-        print("local_brain: modèle prêt (", MODEL_FILE, ")")
-    except Exception as e:  # deps absentes, RAM, réseau HF, fichier introuvable...
-        _state["error"] = f"{type(e).__name__}: {e}"
-        print("local_brain: indisponible ->", _state["error"])
-    finally:
-        _state["loading"] = False
+        with urllib.request.urlopen(OLLAMA_HOST + "/api/tags", timeout=2) as r:
+            return r.status == 200
+    except Exception as e:
+        _state["error"] = f"Ollama injoignable ({type(e).__name__})"
+        return False
 
 
 def start_loading() -> None:
-    """Lance le chargement du modèle en tâche de fond (une seule fois)."""
-    if _state["loading"] or _state["ready"]:
-        return
+    """Vérifie qu'Ollama répond (le modèle se charge à la première requête)."""
     _state["loading"] = True
-    threading.Thread(target=_load, daemon=True).start()
+    _state["ready"] = _ping()
+    if _state["ready"]:
+        _state["error"] = None
+        print("local_brain: Ollama OK ->", OLLAMA_HOST, "modèle", OLLAMA_MODEL)
+    else:
+        print("local_brain: indisponible ->", _state["error"])
+    _state["loading"] = False
 
 
 def _generate(text: str) -> str:
-    """Inference bloquante (protégée par un verrou : llama.cpp n'est pas thread-safe)."""
-    with _lock:
-        out = _llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": LOCAL_SYSTEM},
-                {"role": "user", "content": (text or "").strip()},
-            ],
-            max_tokens=64,
-            temperature=0.7,
-            top_p=0.9,
-        )
-    reply = (out["choices"][0]["message"]["content"] or "").strip()
-    # garder une seule phrase courte
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": LOCAL_SYSTEM},
+            {"role": "user", "content": (text or "").strip()},
+        ],
+        "stream": False,
+        "options": {"temperature": 0.7, "top_p": 0.9, "num_predict": 80},
+    }).encode("utf-8")
+    req = urllib.request.Request(OLLAMA_HOST + "/api/chat", data=payload,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    reply = ((data.get("message") or {}).get("content") or "").strip()
     reply = reply.replace("\n", " ").strip()
     if len(reply) > 160:
         reply = reply[:157].rstrip() + "..."
     return reply
 
 
-def _gesture_from(user_text: str, reply: str, brain) -> tuple[str, str]:
-    """Traduit texte utilisateur + réponse du modèle en (état, geste)."""
+def _gesture_from(user_text: str, reply: str) -> tuple[str, str]:
     t = (user_text or "").lower()
     r = (reply or "").lower()
     if any(w in t for w in ("bonjour", "salut", "coucou", "hey", "bonsoir")):
         return "happy", "greet"
-    if any(w in r[:12] for w in ("oui", "ouais", "carrément", "bien sûr", "avec plaisir")):
+    if any(w in r[:14] for w in ("oui", "ouais", "carrément", "bien sûr", "avec plaisir")):
         return "happy", "yes"
-    if any(w in r[:12] for w in ("non", "nan", "jamais", "pas ")):
+    if any(w in r[:14] for w in ("non", "nan", "jamais", "pas ")):
         return "confused", "no"
     if "?" in t:
         return "curious", "tilt"
-    if any(w in r for w in ("super", "génial", "content", "cool", "j'adore")):
+    if any(w in r for w in ("super", "génial", "content", "cool", "j'adore", "j'aime")):
         return "happy", "happy"
     return "attentive", "tilt"
 
@@ -131,7 +111,7 @@ async def decide_json(brain, text: str):
         reply = await asyncio.to_thread(_generate, text)
         if not reply:
             return None
-        state, gesture = _gesture_from(text, reply, brain)
+        state, gesture = _gesture_from(text, reply)
         return {"state": state, "gesture": gesture, "say": reply, "sleep": False}
     except Exception as e:
         print("local_brain: erreur inference ->", type(e).__name__, e)

@@ -48,7 +48,7 @@ même cerveau.
 - [x] Corps 3D piloté par le cerveau serveur (WebSocket)
 - [x] Fiches pièces cliquables + catalogue éditable (BOM) + upload photo/fiche technique
 - [x] Couche IA côté serveur (Claude comprend le langage libre), repli scripté automatique
-- [x] Cerveau local : un vrai modèle qui pense sur le serveur (llama.cpp), sans API externe
+- [x] Cerveau local : un vrai modèle qui pense chez toi (Ollama + GPU), sans API externe
 - [ ] Mémoire persistante (le bras te reconnaît d'une visite à l'autre)
 - [ ] Répertoire de gestes enrichi (pointer, suivre une trajectoire, saisir)
 - [ ] Passage au vrai bras physique
@@ -85,22 +85,21 @@ comment ARIA réfléchit :
   optionnel, défaut `claude-opus-5` ; `claude-haiku-4-5` pour la vitesse).
 - **`scripted`** - règles seules, zéro modèle.
 
-### Le cerveau local (il pense tout seul)
+### Le cerveau local (il pense tout seul, via Ollama)
 
-- Modèle par défaut : `Qwen/Qwen2.5-0.5B-Instruct-GGUF` (petit, ~0,5 Md de
-  paramètres). Réglable via `LOCAL_MODEL_REPO` / `LOCAL_MODEL_FILE`. Téléchargé
-  une fois dans `MODEL_DIR` (défaut `/data/models`, sur le volume -> gardé).
-- **Contraintes Railway (CPU)** : il faut ~1 Go de RAM libre ; le **premier
-  message** après un déploiement attend le chargement (~1-2 min) ; les réponses
-  prennent quelques secondes et restent modestes (petit modèle).
-- Le modèle **génère la pensée/parole** d'ARIA ; le code traduit ça en geste
-  (`local_brain._gesture_from`). Toute erreur (RAM, réseau, libs) laisse le
-  cerveau local indisponible et on retombe sur les règles.
-- **Interrupteur de secours** : si le service sature en mémoire ou boucle au
-  redémarrage, mets `BRAIN_MODE=scripted` dans les Variables pour revenir
-  instantanément à un serveur léger.
+Le cerveau local passe par **Ollama** : un modèle open-source tourne sur ta
+machine, accéléré par ton GPU. Aucun appel externe. `brain/local_brain.py`
+parle à Ollama en HTTP (`OLLAMA_HOST`, défaut `http://127.0.0.1:11434`), avec
+le modèle `OLLAMA_MODEL` (défaut `qwen2.5:7b`). Le modèle **génère la
+pensée/parole** d'ARIA ; le code traduit en geste (`_gesture_from`).
 
-Voir l'état en direct sur `GET /health` (`mode`, `local.ready`, `local.error`).
+- **Recommandé sur ton PC** (RTX + 32 Go RAM) : un modèle 7B tourne bien et
+  répond vite. Voir **[LOCAL_SETUP.md](LOCAL_SETUP.md)** et le lanceur
+  **`run_local.bat`**.
+- Sur un serveur sans Ollama (Railway), le cerveau local est simplement
+  indisponible -> repli automatique sur les règles scriptées (ou `claude` si
+  configuré). Railway reste ainsi la vitrine légère toujours en ligne.
+- État en direct : `GET /health` (`mode`, `local.ready`, `local.error`).
 
 ## Déployer le cerveau sur Railway
 
