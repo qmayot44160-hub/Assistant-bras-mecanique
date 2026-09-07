@@ -84,15 +84,41 @@ class Brain:
         evs.append(self._ev("log", layer="reflexe", msg="sollicité par contact"))
         return evs
 
-    def perceive_say(self, raw: str) -> list[dict]:
+    def say_prefix(self, raw: str) -> list[dict]:
+        """Partie commune quand l'humain parle : journal + réveil éventuel."""
         raw = (raw or "").strip()
         if not raw:
             return []
         evs: list[dict] = [self._ev("log", layer="dialogue", msg=f"« {raw} »")]
         if not self.awake:
             evs += self.wake(by_user=True)
-        # SEAM : si un LLM est branché, il déciderait ici. Repli scripté sinon.
-        evs += self.interpret_scripted(raw)
+        return evs
+
+    def perceive_say(self, raw: str) -> list[dict]:
+        raw = (raw or "").strip()
+        if not raw:
+            return []
+        return self.say_prefix(raw) + self.interpret_scripted(raw)
+
+    def apply_decision(self, d: dict) -> list[dict]:
+        """Applique une décision de la couche IA (même vocabulaire que le scripté)."""
+        if not isinstance(d, dict):
+            return []
+        self._last_interact = time.monotonic()
+        self.boredom = max(0.0, self.boredom - 0.5)
+        say = d.get("say") if isinstance(d.get("say"), str) else ""
+        if d.get("sleep") is True:
+            evs = [self._ev("thought", text=say)] if say else []
+            return evs + self.sleep()
+        st = d.get("state") if d.get("state") in ("idle", "attentive", "curious", "happy", "confused") else "attentive"
+        evs = self._set_state(st)
+        g = d.get("gesture")
+        has_g = isinstance(g, str) and g in GESTURES and g != "none"
+        if has_g:
+            evs.append(self._ev("gesture", name=g))
+        if say:
+            evs.append(self._ev("thought", text=say))
+        evs.append(self._ev("log", layer="dialogue", msg="IA -> " + st + ((" + " + g) if has_g else "")))
         return evs
 
     # ---- couche dialogue : règles (repli quand l'IA est absente) ----

@@ -26,10 +26,12 @@ try:
     # lancé depuis le dossier brain/  (uvicorn main:app)
     from brain import Brain
     import catalog
+    import ai_layer
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
     from brain import catalog
+    from brain import ai_layer
 
 app = FastAPI(title="Cerveau ARIA")
 brain = Brain()
@@ -87,7 +89,20 @@ async def _start_loop() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"ok": True, "state": brain.state, "awake": brain.awake}
+    return {"ok": True, "state": brain.state, "awake": brain.awake, "ai": ai_layer.available()}
+
+
+async def on_say(text: str) -> list[dict]:
+    """Dialogue : la couche IA décide si dispo, sinon repli scripté."""
+    if not text.strip():
+        return []
+    events = brain.say_prefix(text)
+    decision = await ai_layer.decide_json(brain, text)
+    if decision is not None:
+        events += brain.apply_decision(decision)
+    else:
+        events += brain.interpret_scripted(text)
+    return events
 
 
 # --- Catalogue des pièces (BOM modulable) ---------------------------------
@@ -160,6 +175,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
     # état initial pour le nouvel arrivant
     await ws.send_text(json.dumps(brain.snapshot()))
     await ws.send_text(json.dumps({"type": "log", "layer": "etat", "msg": "corps connecté"}))
+    await ws.send_text(json.dumps({"type": "log", "layer": "etat",
+        "msg": "couche IA active (Claude)" if ai_layer.available() else "couche IA absente -> réflexes"}))
     try:
         while True:
             raw = await ws.receive_text()
@@ -167,7 +184,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            events = handle(msg)
+            if msg.get("type") == "say":
+                events = await on_say(str(msg.get("text", "")))
+            else:
+                events = handle(msg)
             await hub.broadcast(events)
     except WebSocketDisconnect:
         await hub.leave(ws)

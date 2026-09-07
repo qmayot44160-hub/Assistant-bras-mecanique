@@ -47,7 +47,7 @@ même cerveau.
 - [x] Cerveau Python déporté - squelette (`brain/`, FastAPI + WebSocket), prêt pour Railway
 - [x] Corps 3D piloté par le cerveau serveur (WebSocket)
 - [x] Fiches pièces cliquables + catalogue éditable (BOM) + upload photo/fiche technique
-- [ ] Couche IA côté serveur (SEAM `interpret_ai`, clé LLM en variable d'env)
+- [x] Couche IA côté serveur (Claude comprend le langage libre), repli scripté automatique
 - [ ] Mémoire persistante (le bras te reconnaît d'une visite à l'autre)
 - [ ] Répertoire de gestes enrichi (pointer, suivre une trajectoire, saisir)
 - [ ] Passage au vrai bras physique
@@ -70,6 +70,20 @@ uvicorn main:app --reload
 
 Puis ouvre http://localhost:8000 : une page de test montre le cerveau vivre et
 réagir. Le canal temps réel est sur `/ws`, la sonde de santé sur `/health`.
+
+## Activer la couche IA (parler en langage libre)
+
+Par défaut, le dialogue tourne en **règles scriptées**. Pour qu'ARIA comprenne
+le langage libre et décide lui-même de ses gestes, donne-lui une clé Claude :
+
+1. Service Railway -> onglet **Variables** -> ajouter `ANTHROPIC_API_KEY` = ta clé.
+2. Optionnel : `ARIA_MODEL` pour choisir le modèle. Défaut `claude-opus-5`.
+   Pour des réponses **quasi instantanées**, mettre `claude-haiku-4-5`.
+3. Redéploiement automatique. Sans clé, tout continue de marcher (repli scripté).
+
+Le module `brain/ai_layer.py` interroge Claude (SDK Anthropic) et renvoie une
+décision structurée `{state, gesture, say, sleep}` que le corps exécute. Toute
+erreur (clé invalide, réseau) retombe silencieusement sur les règles.
 
 ## Déployer le cerveau sur Railway
 
