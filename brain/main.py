@@ -14,6 +14,7 @@ brancher : la page de test ici, le corps 3D plus tard, le vrai bras un jour.
 from __future__ import annotations
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
@@ -27,11 +28,16 @@ try:
     from brain import Brain
     import catalog
     import ai_layer
+    import local_brain
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
     from brain import catalog
     from brain import ai_layer
+    from brain import local_brain
+
+# Choix du cerveau : local (modèle sur le serveur) | claude (API) | scripted (règles)
+BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
 
 app = FastAPI(title="Cerveau ARIA")
 brain = Brain()
@@ -76,6 +82,9 @@ hub = Hub()
 
 @app.on_event("startup")
 async def _start_loop() -> None:
+    if BRAIN_MODE == "local":
+        local_brain.start_loading()   # charge le modèle en tâche de fond
+
     async def life() -> None:
         dt = 1.0 / TICK_HZ
         while True:
@@ -89,15 +98,20 @@ async def _start_loop() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"ok": True, "state": brain.state, "awake": brain.awake, "ai": ai_layer.available()}
+    return {"ok": True, "state": brain.state, "awake": brain.awake,
+            "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available()}
 
 
 async def on_say(text: str) -> list[dict]:
-    """Dialogue : la couche IA décide si dispo, sinon repli scripté."""
+    """Dialogue : cerveau local si dispo, sinon Claude si choisi, sinon repli scripté."""
     if not text.strip():
         return []
     events = brain.say_prefix(text)
-    decision = await ai_layer.decide_json(brain, text)
+    decision = None
+    if BRAIN_MODE == "local":
+        decision = await local_brain.decide_json(brain, text)
+    elif BRAIN_MODE == "claude":
+        decision = await ai_layer.decide_json(brain, text)
     if decision is not None:
         events += brain.apply_decision(decision)
     else:
@@ -175,8 +189,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
     # état initial pour le nouvel arrivant
     await ws.send_text(json.dumps(brain.snapshot()))
     await ws.send_text(json.dumps({"type": "log", "layer": "etat", "msg": "corps connecté"}))
-    await ws.send_text(json.dumps({"type": "log", "layer": "etat",
-        "msg": "couche IA active (Claude)" if ai_layer.available() else "couche IA absente -> réflexes"}))
+    _mode_msg = {
+        "local": "cerveau local " + ("prêt" if local_brain.available() else "en chargement..."),
+        "claude": "couche IA Claude " + ("active" if ai_layer.available() else "(clé absente -> réflexes)"),
+        "scripted": "réflexes scriptés",
+    }.get(BRAIN_MODE, BRAIN_MODE)
+    await ws.send_text(json.dumps({"type": "log", "layer": "etat", "msg": "cerveau: " + _mode_msg}))
     try:
         while True:
             raw = await ws.receive_text()

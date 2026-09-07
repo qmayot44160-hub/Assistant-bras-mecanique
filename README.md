@@ -48,6 +48,7 @@ même cerveau.
 - [x] Corps 3D piloté par le cerveau serveur (WebSocket)
 - [x] Fiches pièces cliquables + catalogue éditable (BOM) + upload photo/fiche technique
 - [x] Couche IA côté serveur (Claude comprend le langage libre), repli scripté automatique
+- [x] Cerveau local : un vrai modèle qui pense sur le serveur (llama.cpp), sans API externe
 - [ ] Mémoire persistante (le bras te reconnaît d'une visite à l'autre)
 - [ ] Répertoire de gestes enrichi (pointer, suivre une trajectoire, saisir)
 - [ ] Passage au vrai bras physique
@@ -71,19 +72,35 @@ uvicorn main:app --reload
 Puis ouvre http://localhost:8000 : une page de test montre le cerveau vivre et
 réagir. Le canal temps réel est sur `/ws`, la sonde de santé sur `/health`.
 
-## Activer la couche IA (parler en langage libre)
+## Le cerveau : local, Claude, ou scripté
 
-Par défaut, le dialogue tourne en **règles scriptées**. Pour qu'ARIA comprenne
-le langage libre et décide lui-même de ses gestes, donne-lui une clé Claude :
+La variable d'environnement `BRAIN_MODE` (service Railway -> Variables) choisit
+comment ARIA réfléchit :
 
-1. Service Railway -> onglet **Variables** -> ajouter `ANTHROPIC_API_KEY` = ta clé.
-2. Optionnel : `ARIA_MODEL` pour choisir le modèle. Défaut `claude-opus-5`.
-   Pour des réponses **quasi instantanées**, mettre `claude-haiku-4-5`.
-3. Redéploiement automatique. Sans clé, tout continue de marcher (repli scripté).
+- **`local`** (défaut) - un **vrai modèle de langage tourne sur le serveur**
+  (llama.cpp, GGUF), aucun appel externe. ARIA pense par lui-même. `brain/local_brain.py`
+  le charge en tâche de fond au démarrage ; tant qu'il n'est pas prêt, repli scripté.
+- **`claude`** - le dialogue passe par l'API Claude (`brain/ai_layer.py`), plus
+  malin mais externe et payant. Nécessite `ANTHROPIC_API_KEY` (et `ARIA_MODEL`
+  optionnel, défaut `claude-opus-5` ; `claude-haiku-4-5` pour la vitesse).
+- **`scripted`** - règles seules, zéro modèle.
 
-Le module `brain/ai_layer.py` interroge Claude (SDK Anthropic) et renvoie une
-décision structurée `{state, gesture, say, sleep}` que le corps exécute. Toute
-erreur (clé invalide, réseau) retombe silencieusement sur les règles.
+### Le cerveau local (il pense tout seul)
+
+- Modèle par défaut : `Qwen/Qwen2.5-0.5B-Instruct-GGUF` (petit, ~0,5 Md de
+  paramètres). Réglable via `LOCAL_MODEL_REPO` / `LOCAL_MODEL_FILE`. Téléchargé
+  une fois dans `MODEL_DIR` (défaut `/data/models`, sur le volume -> gardé).
+- **Contraintes Railway (CPU)** : il faut ~1 Go de RAM libre ; le **premier
+  message** après un déploiement attend le chargement (~1-2 min) ; les réponses
+  prennent quelques secondes et restent modestes (petit modèle).
+- Le modèle **génère la pensée/parole** d'ARIA ; le code traduit ça en geste
+  (`local_brain._gesture_from`). Toute erreur (RAM, réseau, libs) laisse le
+  cerveau local indisponible et on retombe sur les règles.
+- **Interrupteur de secours** : si le service sature en mémoire ou boucle au
+  redémarrage, mets `BRAIN_MODE=scripted` dans les Variables pour revenir
+  instantanément à un serveur léger.
+
+Voir l'état en direct sur `GET /health` (`mode`, `local.ready`, `local.error`).
 
 ## Déployer le cerveau sur Railway
 
