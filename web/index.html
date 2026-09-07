@@ -495,14 +495,16 @@ const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.set(0
 const headG = new THREE.Group(); headG.position.y=0.72; wristG.add(headG);
 const flange = cyl(0.26,0.3,0.16,matMetal,'head'); flange.position.y=0.05; headG.add(flange);
 const palm = cyl(0.24,0.26,0.18,matGrey,'head'); palm.position.y=0.2; headG.add(palm);
+// Préhenseur 2 mâchoires (gripper-left / gripper-right) + engrenages
 const fingers = [];
-for(let i=0;i<3;i++){
-  const pv = new THREE.Group(); pv.rotation.y = i*Math.PI*2/3; headG.add(pv);
-  const knuckle = new THREE.Group(); knuckle.position.set(0.16,0.28,0); pv.add(knuckle);
-  const prox = box(0.08,0.34,0.12,matMetal,'head'); prox.position.y=0.15; knuckle.add(prox);
-  const dist = box(0.07,0.22,0.1,matDark,'head'); dist.position.set(-0.05,0.33,0); dist.rotation.z=0.7; knuckle.add(dist);
+[0, Math.PI].forEach(a=>{
+  const pv = new THREE.Group(); pv.rotation.y = a; headG.add(pv);
+  const knuckle = new THREE.Group(); knuckle.position.set(0.13,0.26,0); pv.add(knuckle);
+  const jaw = box(0.1,0.38,0.26,matMetal,'head'); jaw.position.y=0.17; knuckle.add(jaw);      // mâchoire large
+  const tip = box(0.09,0.2,0.24,matDark,'head'); tip.position.set(-0.05,0.36,0); tip.rotation.z=0.55; knuckle.add(tip); // bout crochu
   fingers.push(knuckle);
-}
+});
+[[-0.1,0.13,0],[0.1,0.13,0]].forEach(p=>{ const g=cyl(0.09,0.09,0.06,matDark,'head'); g.position.set(p[0],p[1],p[2]); headG.add(g); }); // servo-gear + idol-gear
 
 /* ---------- FX JARVIS : survol, focus caméra, anneau de scan ---------- */
 const partMeshes = {};
@@ -1040,22 +1042,23 @@ let catalogEditable = false;   // édition possible (toujours vrai après init)
 let catalogBackend = false;    // vrai si servi par le cerveau -> stockage serveur (/data)
 
 // Catalogue de repli (lecture seule) pour l'artifact / le fichier local.
+// Aligné sur le modèle imprimable "Robotic Arm" (TomKnox, Arduino, 4 axes + pince).
 const SEED_FALLBACK = [
-  {id:'base',mesh:'base',name:'Socle',category:'impression',role:"Base stable qui supporte tout le bras et loge le roulement de rotation.",components:[{name:'Roulement 608ZZ',qty:1}]},
-  {id:'yaw',mesh:'yaw',name:'Plateau tournant (rotation base)',category:'impression',role:"Fait pivoter tout le bras à gauche/droite (yaw).",components:[{name:'Servo MG996R',qty:1}]},
-  {id:'shoulder',mesh:'shoulder',name:'Articulation épaule',category:'impression',role:"Lève et abaisse le bras supérieur.",components:[{name:'Servo MG996R',qty:1}]},
-  {id:'upper',mesh:'upper',name:'Bras supérieur',category:'impression',role:"Segment entre l'épaule et le coude."},
-  {id:'elbow',mesh:'elbow',name:'Articulation coude',category:'impression',role:"Plie l'avant-bras.",components:[{name:'Servo MG996R',qty:1}]},
-  {id:'forearm',mesh:'forearm',name:'Avant-bras',category:'impression',role:"Segment entre le coude et le poignet."},
-  {id:'wrist',mesh:'wrist',name:'Poignet (pan/tilt)',category:'impression',role:"Oriente la tête : produit les hochements oui/non.",components:[{name:'Micro-servo SG90',qty:2}]},
-  {id:'head',mesh:'head',name:'Tête / support caméra',category:'impression',role:"Boîtier expressif qui porte l'œil."},
-  {id:'eye',mesh:'eye',name:'Œil (caméra + LED)',category:'electronique',role:"Caméra (vision) + anneau LED qui exprime l'humeur.",components:[{name:'Anneau LED WS2812',qty:1}]},
-  {id:'controller',mesh:null,name:'Contrôleur ESP32',category:'electronique',role:"Cerveau embarqué Wi-Fi, pilote les servos via le driver."},
-  {id:'driver',mesh:null,name:'Driver servos PCA9685',category:'electronique',role:"Pilote jusqu'à 16 servos en I2C."},
-  {id:'psu',mesh:null,name:'Alimentation 5-6V',category:'electronique',role:"Fournit le courant des servos (≥5A)."},
-  {id:'wiring',mesh:null,name:'Câblage',category:'achat',role:"Rallonges servo, fils Dupont, gaine."},
-  {id:'connectors',mesh:null,name:'Connecteurs & interrupteur',category:'achat',role:"JST, bornier, interrupteur, prise DC."},
-  {id:'hardware',mesh:null,name:'Visserie & roulements',category:'achat',role:"Vis M3, écrous, roulements 608ZZ, inserts."}
+  {id:'base',mesh:'base',name:'Socle + pieds',category:'impression',role:"Base du bras et pieds antidérapants (TPU). Reçoit l'axe 1.",components:[{name:'Inserts filetés M3',qty:'+'},{name:'Vis M3',qty:'+'}]},
+  {id:'yaw',mesh:'yaw',name:'Axe 1 - rotation base',category:'impression',role:"Fait pivoter tout le bras.",components:[{name:'Moteur pas-à-pas NEMA17 (à confirmer)',qty:1}]},
+  {id:'shoulder',mesh:'shoulder',name:'Axe 2 - épaule',category:'impression',role:"Lève et abaisse le bras (axe le plus sollicité).",components:[{name:'Moteur pas-à-pas NEMA17 (à confirmer)',qty:1}]},
+  {id:'upper',mesh:'upper',name:'Bras (épaule-coude)',category:'impression',role:"Segment structurel entre l'axe 2 et l'axe 3."},
+  {id:'elbow',mesh:'elbow',name:'Axe 3 - coude',category:'impression',role:"Plie l'avant-bras.",components:[{name:'Moteur pas-à-pas NEMA17 (à confirmer)',qty:1}]},
+  {id:'forearm',mesh:'forearm',name:'Avant-bras (module 4)',category:'impression',role:"Segment entre le coude et le poignet."},
+  {id:'wrist',mesh:'wrist',name:'Axe 4 - poignet',category:'impression',role:"Oriente le préhenseur : produit les hochements oui/non.",components:[{name:'Moteur / servo (à confirmer)',qty:1}]},
+  {id:'head',mesh:'head',name:'Préhenseur 2 doigts',category:'impression',role:"Saisit les objets. Servo + engrenages (servo-gear, idol-gear, pivot-arm).",components:[{name:'Micro-servo pince (à confirmer)',qty:1}]},
+  {id:'eye',mesh:'eye',name:'Capteur / caméra (option ARIA)',category:'electronique',role:"Extension ARIA : capteur/LED pour l'expression. Hors modèle d'origine."},
+  {id:'controller',mesh:null,name:'Arduino (contrôleur)',category:'electronique',role:"Cerveau embarqué : pilote moteurs + servo. Firmware sur GitHub."},
+  {id:'drivers',mesh:null,name:'Drivers moteurs + support',category:'electronique',role:"Pilotent les pas-à-pas (support-drivers imprimé). Réf. à confirmer."},
+  {id:'fan',mesh:null,name:'Module ventilation',category:'electronique',role:"Refroidit les drivers moteurs (fan-module)."},
+  {id:'psu',mesh:null,name:'Alimentation',category:'electronique',role:"Courant moteurs + électronique (12V typique, à confirmer)."},
+  {id:'covers',mesh:null,name:'Capots d\'axes (cosmétique)',category:'impression',role:"Habillage des articulations (cover-axis 2/3/4). Impression PLA."},
+  {id:'hardware',mesh:null,name:'Visserie, inserts & roulements',category:'achat',role:"Inserts filetés à chaud M3, vis M3, roulements."}
 ];
 
 /* Persistance LOCALE (IndexedDB, repli localStorage) : tes modifs, photos et
