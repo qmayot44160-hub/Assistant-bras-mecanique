@@ -139,6 +139,13 @@
     display:grid;place-items:center;overflow:hidden}
   .zoom img{width:100%;height:100%;object-fit:contain}
   .zoom .ph{color:var(--dim);font-family:var(--mono);font-size:12px;text-align:center;padding:14px;line-height:1.5}
+  .modelview{position:absolute;inset:0;cursor:grab}
+  .modelview canvas{width:100%!important;height:100%!important;display:block}
+  .mv-load{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);
+    font-family:var(--mono);font-size:12px;pointer-events:none}
+  .mv-tag{position:absolute;left:8px;bottom:8px;color:var(--muted);font-family:var(--mono);
+    font-size:10px;letter-spacing:.04em;background:rgba(6,9,14,.6);padding:3px 7px;border-radius:6px;
+    pointer-events:none}
   .blk h3{font-family:var(--disp);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
   .blk p{margin:0;font-size:13.5px;line-height:1.55}
   .kvgrid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
@@ -367,6 +374,7 @@
 <div class="sheet" id="sheet"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 <script>
 (function(){
 "use strict";
@@ -1116,9 +1124,10 @@ function pickPart(x,y){ const h=pickHit(x,y); return h ? h.id : null; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
 function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
-function closeSheet(){ sheetEl.classList.remove('open'); setFocus(null); resetView(); sfx('close'); }
+function closeSheet(){ disposeMiniViewer(); sheetEl.classList.remove('open'); setFocus(null); resetView(); sfx('close'); }
 
 function openCatalogue(){
+  disposeMiniViewer();
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
   let h = `<div class="sheet-head"><h2>Catalogue des pièces</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
   h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">Fiches, photos et PDF enregistrés ${catalogBackend?'sur le serveur (/data)':'dans ce navigateur'}.</div>`;
@@ -1158,11 +1167,63 @@ function listRows(arr, kind){
   ).join('')+'</ul>';
 }
 
+/* ---------- Visionneuse de vraies pièces (STL) ---------- */
+const PART_MODELS = {
+  yaw:['0007-0101','0007-0102','0007-0103'],
+  shoulder:['0007-0201','0007-0202','0007-0203','0007-0204','0007-0205'],
+  elbow:['0007-0301','0007-0302','0007-0303','0007-0304'],
+  forearm:['0007-0401','0007-0402','0007-0403','0007-0404'],
+  head:['0007-0501','0007-0502','0007-0503','0007-0504','0007-0505','0007-0506','0007-0507'],
+  covers:['0007-0701','0007-0702','0007-0703','0007-0704'],
+  fan:['0007-0602'], drivers:['0007-0603'], base:['0007-0801']
+};
+let miniViewer=null;
+function disposeMiniViewer(){ if(miniViewer){ try{ miniViewer.dispose(); }catch(_){} miniViewer=null; } }
+function openMiniViewer(container, urls){
+  disposeMiniViewer();
+  if(!window.THREE || !THREE.STLLoader || !container) return;
+  const w=container.clientWidth||320, hgt=container.clientHeight||220;
+  const rnd=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  rnd.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); rnd.setSize(w,hgt);
+  container.innerHTML=''; container.appendChild(rnd.domElement);
+  const sc=new THREE.Scene(); if(scene.environment) sc.environment=scene.environment;
+  const cam=new THREE.PerspectiveCamera(42, w/hgt, 0.5, 12000);
+  sc.add(new THREE.HemisphereLight(0xcdddf5,0x141a22,1.0));
+  const dl=new THREE.DirectionalLight(0xffffff,1.15); dl.position.set(1,1.5,1); sc.add(dl);
+  const mat=new THREE.MeshStandardMaterial({color:0xdfe4ec, metalness:0.5, roughness:0.42, envMapIntensity:1.1});
+  const grp=new THREE.Group(); sc.add(grp);
+  const inner=new THREE.Group(); inner.rotation.x=-Math.PI/2; grp.add(inner);  // STL Z-up -> Y-up
+  const loader=new THREE.STLLoader();
+  let remaining=urls.length, any=false;
+  urls.forEach(u=>loader.load(u, geo=>{ inner.add(new THREE.Mesh(geo,mat)); any=true; if(--remaining===0) fit(); },
+                                    undefined, ()=>{ if(--remaining===0) fit(); }));
+  function fit(){
+    const n=container.querySelector('.mv-load'); if(n) n.remove();
+    if(!any){ container.insertAdjacentHTML('beforeend','<div class="mv-load">modèle indisponible</div>'); return; }
+    const bb=new THREE.Box3().setFromObject(inner), c=bb.getCenter(new THREE.Vector3()), s=bb.getSize(new THREE.Vector3());
+    inner.position.set(-c.x,-c.y,-c.z);
+    const rad=Math.max(s.x,s.y,s.z)||100; cam.position.set(0, rad*0.35, rad*1.9); cam.lookAt(0,0,0);
+  }
+  let rx=0.15, ry=0.5, drag=false, lx=0, ly=0, raf=0;
+  const dom=rnd.domElement; dom.style.cursor='grab'; dom.style.touchAction='none';
+  dom.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;dom.setPointerCapture(e.pointerId);});
+  dom.addEventListener('pointermove',e=>{ if(!drag)return; ry+=(e.clientX-lx)*0.01; rx=Math.max(-1.4,Math.min(1.4,rx+(e.clientY-ly)*0.01)); lx=e.clientX;ly=e.clientY;});
+  dom.addEventListener('pointerup',()=>drag=false);
+  function loop(){ raf=requestAnimationFrame(loop); if(!drag) ry+=0.005; grp.rotation.y=ry; grp.rotation.x=rx; rnd.render(sc,cam); }
+  loop();
+  miniViewer={dispose(){ cancelAnimationFrame(raf); try{rnd.dispose();}catch(_){} if(rnd.domElement.parentNode) rnd.domElement.parentNode.removeChild(rnd.domElement); }};
+}
+
 function renderView(p){
+  disposeMiniViewer();
   const cat=p.category||'achat';
   let b = `<div class="sheet-head"><h2>${esc(p.name)}</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
   b += `<span class="cat ${cat}">${CAT_LABEL[cat]||cat}</span>`;
-  b += `<div class="zoom">`+(p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.name)}">`:`<div class="ph">Pas encore de photo${catalogEditable?'<br>« Modifier » pour en ajouter une':''}</div>`)+`</div>`;
+  const models = (!inArtifact && PART_MODELS[p.id]) ? PART_MODELS[p.id] : null;
+  if(models)
+    b += `<div class="zoom"><div class="modelview" id="modelView"><div class="mv-load">chargement du modèle…</div></div><span class="mv-tag">pièce imprimée réelle · glisse pour tourner</span></div>`;
+  else
+    b += `<div class="zoom">`+(p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.name)}">`:`<div class="ph">Pas encore de photo${catalogEditable?'<br>« Modifier » pour en ajouter une':''}</div>`)+`</div>`;
   if(p.role) b += `<div class="blk"><p>${esc(p.role)}</p></div>`;
   const specs=kvRows(p.specs); if(specs) b += `<div class="blk"><h3>Caractéristiques</h3>${specs}</div>`;
   const pr=p.print?kvRows(p.print):''; if(pr) b += `<div class="blk"><h3>Impression 3D</h3>${pr}</div>`;
@@ -1175,6 +1236,7 @@ function renderView(p){
   b += `</div><div class="sheet-foot"><button data-act="catalogue">Catalogue</button>`+
        (catalogEditable?`<button class="pri" data-open-edit="${esc(p.id)}">Modifier</button>`:'')+`</div>`;
   sheetEl.innerHTML = b;
+  if(models) openMiniViewer(document.getElementById('modelView'), models.map(c=>'models/'+c+'.stl'));
 }
 
 function specsToText(o){ return o&&typeof o==='object'?Object.entries(o).map(([k,v])=>`${k}: ${v}`).join('\n'):''; }
@@ -1185,6 +1247,7 @@ function textToComp(t){ return (t||'').split('\n').map(l=>l.trim()).filter(Boole
 function textToWires(t){ return (t||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [c,tp]=l.split('|'); const [f,to]=(c||'').split('->'); return {from:(f||'').trim(), to:(to||'').trim(), type:(tp||'').trim()}; }); }
 
 function renderEdit(p){
+  disposeMiniViewer();
   const cat=p.category||'achat';
   const opt=(v,l)=>`<option value="${v}"${cat===v?' selected':''}>${l}</option>`;
   let b = `<div class="sheet-head"><h2>Modifier</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;

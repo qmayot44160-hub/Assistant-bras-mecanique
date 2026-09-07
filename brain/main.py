@@ -42,6 +42,12 @@ BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
 app = FastAPI(title="Cerveau ARIA")
 brain = Brain()
 
+# Sert les modèles 3D imprimables (STL) pour la visionneuse de pièces réelles.
+from fastapi.staticfiles import StaticFiles
+_MODELS_DIR = WEB_INDEX.parent / "models"
+if _MODELS_DIR.is_dir():
+    app.mount("/models", StaticFiles(directory=str(_MODELS_DIR)), name="models")
+
 TICK_HZ = 8  # fréquence de la boucle de vie du cerveau
 
 
