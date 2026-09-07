@@ -383,7 +383,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x0a0d13, 12, 30);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-const orbit = {theta:0.7, phi:1.02, r:9.2, target:new THREE.Vector3(0,2.1,0)};
+const orbit = {theta:0.7, phi:1.0, r:12, target:new THREE.Vector3(0,3,0)};
 
 /* Lumières */
 scene.add(new THREE.HemisphereLight(0x9fc4ff, 0x0a0d13, 0.55));
@@ -416,67 +416,93 @@ const shadowTex = radialTexture(0x000000);
 const shadowMat = new THREE.SpriteMaterial({map:shadowTex, color:0x000000, opacity:0.5, transparent:true, depthWrite:false});
 const shadowSpr = new THREE.Sprite(shadowMat); shadowSpr.scale.set(3.4,3.4,1);
 shadowSpr.position.set(0,0.02,0); shadowSpr.material.rotation = 0;
-const shadowMesh = new THREE.Mesh(new THREE.CircleGeometry(1.7,40),
+const shadowMesh = new THREE.Mesh(new THREE.CircleGeometry(2.3,44),
   new THREE.MeshBasicMaterial({map:shadowTex, transparent:true, opacity:0.55, depthWrite:false, color:0x000000}));
 shadowMesh.rotation.x = -Math.PI/2; shadowMesh.position.y = 0.015; scene.add(shadowMesh);
 
-/* ---------- Le corps (Body) ---------- */
-const matMetal = new THREE.MeshStandardMaterial({color:0x9aa6b8, metalness:0.9, roughness:0.38});
-const matDark  = new THREE.MeshStandardMaterial({color:0x2a333f, metalness:0.7, roughness:0.5});
+/* ---------- Le corps (Body) : bras industriel 6 axes ---------- */
+const matMetal = new THREE.MeshStandardMaterial({color:0xc2cad6, metalness:0.95, roughness:0.3});   // métal brossé clair
+const matGrey  = new THREE.MeshStandardMaterial({color:0x8b93a0, metalness:0.85, roughness:0.45});  // panneaux
+const matDark  = new THREE.MeshStandardMaterial({color:0x232a33, metalness:0.75, roughness:0.5});   // articulations
+const matHose  = new THREE.MeshStandardMaterial({color:0x14181d, metalness:0.1, roughness:0.85});   // câbles/gaines
 const matAccent= new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.3, roughness:0.4});
 
-function segment(len, r0, r1, id){
-  const g = new THREE.Group();
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 22), matMetal);
-  m.position.y = len/2; if(id) m.userData.partId = id; g.add(m);
-  return g;
+function box(w,h,d,mat,id){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat||matMetal); if(id) m.userData.partId=id; return m; }
+function cyl(rt,rb,h,mat,id,seg){ const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||24), mat||matMetal); if(id) m.userData.partId=id; return m; }
+function ring(r,tube){ const t=new THREE.Mesh(new THREE.TorusGeometry(r,tube||0.05,12,32), matAccent); t.rotation.x=Math.PI/2; return t; }
+// Cylindre couché sur l'axe X (axe d'articulation)
+function axis(r,len,mat,id){ const m=cyl(r,r,len,mat||matDark,id,24); m.rotation.z=Math.PI/2; return m; }
+// Gaine de câble le long de points locaux
+function hose(points,r){
+  const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(p[0],p[1],p[2])));
+  return new THREE.Mesh(new THREE.TubeGeometry(curve,28,r||0.05,8,false), matHose);
 }
-function joint(r, id){ const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), matDark); if(id) m.userData.partId = id; return m; }
-function ring(r){ const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 10, 28), matAccent); t.rotation.x = Math.PI/2; return t; }
 
 const root = new THREE.Group(); scene.add(root);
 
-// Socle
-const base = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.4, 32), matDark);
-base.position.y = 0.2; base.userData.partId = 'base'; root.add(base);
-base.add(ring(1.0));
+// Socle massif
+const plate = cyl(1.75,1.9,0.14,matDark); plate.position.y=0.07; plate.userData.partId='base'; root.add(plate);
+const base = cyl(1.5,1.6,0.5,matGrey,'base'); base.position.y=0.4; root.add(base);
+base.add(ring(1.35,0.045));
+const baseCap = cyl(1.15,1.4,0.28,matMetal,'base'); baseCap.position.y=0.78; root.add(baseCap);
 
-// Tourelle (yaw)
-const yawG = new THREE.Group(); yawG.position.y = 0.4; root.add(yawG);
-const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.85,0.55,24), matMetal);
-turret.position.y = 0.27; turret.userData.partId = 'yaw'; yawG.add(turret);
+// Taille rotative (yaw)
+const yawG = new THREE.Group(); yawG.position.y=0.92; root.add(yawG);
+const waist = cyl(0.95,1.05,0.8,matMetal,'yaw'); waist.position.y=0.4; yawG.add(waist);
+waist.add(ring(0.78,0.04));
+// chape d'épaule qui monte
+const yoke = box(1.25,0.7,0.7,matGrey,'yaw'); yoke.position.y=0.95; yawG.add(yoke);
 
 // Épaule (pitch)
-const shoulderG = new THREE.Group(); shoulderG.position.y = 0.62; yawG.add(shoulderG);
-shoulderG.add(joint(0.42, 'shoulder'));
-const upper = segment(2.15, 0.34, 0.26, 'upper'); shoulderG.add(upper);
+const shoulderG = new THREE.Group(); shoulderG.position.set(0,1.25,0); yawG.add(shoulderG);
+shoulderG.add(axis(0.5,1.3,matDark,'shoulder'));       // gros axe horizontal
+[-0.55,0.55].forEach(x=>{ const cap=cyl(0.52,0.52,0.12,matMetal,'shoulder'); cap.rotation.z=Math.PI/2; cap.position.x=x; shoulderG.add(cap); });
+
+// Bras supérieur (poutre)
+const L1=2.4;
+const upper = new THREE.Group(); shoulderG.add(upper);
+const upperBeam = box(0.62,L1,0.5,matMetal,'upper'); upperBeam.position.y=L1/2; upper.add(upperBeam);
+[-0.32,0.32].forEach(x=>{ const rail=box(0.06,L1*0.92,0.56,matGrey,'upper'); rail.position.set(x,L1/2,0); upper.add(rail); });
+upper.add(hose([[-0.34,0.15,-0.28],[-0.28,0.9,-0.34],[-0.3,1.7,-0.3],[-0.26,2.25,-0.24]],0.06)); // gaine dorsale
 
 // Coude (pitch)
-const elbowG = new THREE.Group(); elbowG.position.y = 2.15; upper.add(elbowG);
-elbowG.add(joint(0.34, 'elbow'));
-const fore = segment(1.9, 0.27, 0.2, 'forearm'); elbowG.add(fore);
+const elbowG = new THREE.Group(); elbowG.position.y=L1; upper.add(elbowG);
+elbowG.add(axis(0.42,1.05,matDark,'elbow'));
+[-0.45,0.45].forEach(x=>{ const cap=cyl(0.44,0.44,0.1,matMetal,'elbow'); cap.rotation.z=Math.PI/2; cap.position.x=x; elbowG.add(cap); });
 
-// Poignet (pitch/yaw/roll) = base de la "tête"
-const wristG = new THREE.Group(); wristG.position.y = 1.9; wristG.rotation.order = 'YXZ'; fore.add(wristG);
-wristG.add(joint(0.26, 'wrist'));
+// Avant-bras (poutre)
+const L2=2.0;
+const fore = new THREE.Group(); elbowG.add(fore);
+const foreBeam = box(0.5,L2,0.42,matMetal,'forearm'); foreBeam.position.y=L2/2; fore.add(foreBeam);
+[-0.26,0.26].forEach(x=>{ const rail=box(0.05,L2*0.9,0.48,matGrey,'forearm'); rail.position.set(x,L2/2,0); fore.add(rail); });
+fore.add(hose([[0.28,0.15,-0.22],[0.24,0.8,-0.26],[0.26,1.5,-0.22],[0.22,1.9,-0.18]],0.05));
 
-// Tête expressive (caméra + œil)
-const headG = new THREE.Group(); wristG.add(headG);
-const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.34,0.62,20), matMetal);
-housing.position.y = 0.36; housing.userData.partId = 'head'; headG.add(housing);
-// "oreilles"/capteurs
-[-1,1].forEach(s=>{
-  const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.34,10), matDark);
-  ear.position.set(s*0.3, 0.42, 0); ear.rotation.z = s*0.5; ear.userData.partId = 'head'; headG.add(ear);
-});
-const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.2,0.045,10,24), matDark);
-bezel.position.y = 0.66; bezel.rotation.x = Math.PI/2; bezel.userData.partId = 'head'; headG.add(bezel);
+// Poignet (pitch/yaw/roll)
+const wristG = new THREE.Group(); wristG.position.y=L2; wristG.rotation.order='YXZ'; fore.add(wristG);
+const wrist1 = cyl(0.34,0.34,0.5,matDark,'wrist'); wrist1.position.y=0.25; wristG.add(wrist1);
+wrist1.add(ring(0.3,0.035));
+const wrist2 = cyl(0.3,0.3,0.34,matMetal,'wrist'); wrist2.position.y=0.55; wristG.add(wrist2);
+
+// Œil / capteur (garde l'expression + l'humeur)
 const eyeMat = new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:1.3, roughness:0.3});
-const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), eyeMat);
-eye.position.y = 0.7; eye.userData.partId = 'eye'; headG.add(eye);
+const eyePod = cyl(0.14,0.16,0.16,matDark,'eye'); eyePod.rotation.x=Math.PI/2; eyePod.position.set(0,0.5,0.3); wristG.add(eyePod);
+const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1,18,14), eyeMat); eye.position.set(0,0.5,0.4); eye.userData.partId='eye'; wristG.add(eye);
 const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({map:radialTexture(0x34d3ee), color:0x34d3ee, transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending}));
-glowSpr.scale.set(1.1,1.1,1); glowSpr.position.y = 0.7; headG.add(glowSpr);
-const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.y = 0.7; headG.add(eyeLight);
+glowSpr.scale.set(0.8,0.8,1); glowSpr.position.set(0,0.5,0.42); wristG.add(glowSpr);
+const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.set(0,0.5,0.45); wristG.add(eyeLight);
+
+// Tête = préhenseur (pince à 3 doigts)
+const headG = new THREE.Group(); headG.position.y=0.72; wristG.add(headG);
+const flange = cyl(0.26,0.3,0.16,matMetal,'head'); flange.position.y=0.05; headG.add(flange);
+const palm = cyl(0.24,0.26,0.18,matGrey,'head'); palm.position.y=0.2; headG.add(palm);
+const fingers = [];
+for(let i=0;i<3;i++){
+  const pv = new THREE.Group(); pv.rotation.y = i*Math.PI*2/3; headG.add(pv);
+  const knuckle = new THREE.Group(); knuckle.position.set(0.16,0.28,0); pv.add(knuckle);
+  const prox = box(0.08,0.34,0.12,matMetal,'head'); prox.position.y=0.15; knuckle.add(prox);
+  const dist = box(0.07,0.22,0.1,matDark,'head'); dist.position.set(-0.05,0.33,0); dist.rotation.z=0.7; knuckle.add(dist);
+  fingers.push(knuckle);
+}
 
 /* ---------- FX JARVIS : survol, focus caméra, anneau de scan ---------- */
 const partMeshes = {};
@@ -484,7 +510,7 @@ root.traverse(o=>{ if(o.isMesh && o.userData.partId){ o.userData.mat0 = o.materi
 const hoverMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.5, metalness:0.5, roughness:0.3});
 const focusMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.4, roughness:0.25});
 let hoverPart=null, focusPart=null, camTween=null, scanRings=[];
-const CAM_HOME = {theta:0.7, phi:1.02, r:9.2, target:new THREE.Vector3(0,2.1,0)};
+const CAM_HOME = {theta:0.7, phi:1.0, r:12, target:new THREE.Vector3(0,3,0)};
 const lerp=(a,b,t)=>a+(b-a)*t;
 
 function meshesOf(id){ return partMeshes[id]||[]; }
@@ -886,7 +912,15 @@ function frame(now){
   eyeMat.emissiveIntensity = 1.3*pulse*doBlink;
   glowSpr.material.opacity = (brain.awake?0.9:0.35)*pulse*doBlink;
   eyeLight.intensity = (brain.awake?0.7:0.15)*pulse*doBlink;
-  glowSpr.scale.setScalar(1.0 + 0.12*Math.max(0,blinkPhase)*(brain.awake?1:0.3));
+  glowSpr.scale.setScalar(0.8 + 0.1*Math.max(0,blinkPhase)*(brain.awake?1:0.3));
+
+  // Pince : ouverture/fermeture douce selon l'humeur (positif = serré)
+  if(fingers.length){
+    const grip = (brain.awake?0.28:0.12)
+      - (['happy','greet','curious'].includes(brain.state) ? 0.22 : 0)
+      + (REDUCED ? 0 : Math.sin(clock*1.3)*0.04);
+    for(const k of fingers) k.rotation.z = grip;
+  }
 
   // Meters
   mE.style.width = (brain.energy*100)+'%';
@@ -965,7 +999,7 @@ canvas.addEventListener('pointerup', e=>{
 });
 canvas.addEventListener('wheel', e=>{
   e.preventDefault(); camTween=null;
-  orbit.r = Math.max(4.5, Math.min(16, orbit.r + Math.sign(e.deltaY)*0.6));
+  orbit.r = Math.max(5, Math.min(22, orbit.r + Math.sign(e.deltaY)*0.8));
 }, {passive:false});
 
 /* Dock */
