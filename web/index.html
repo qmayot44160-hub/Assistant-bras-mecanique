@@ -414,7 +414,7 @@ const _pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = _pmrem.fromEquirectangular(makeEnvTexture()).texture;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-const orbit = {theta:0.7, phi:1.0, r:12, target:new THREE.Vector3(0,3,0)};
+const orbit = {theta:0.7, phi:1.06, r:15.5, target:new THREE.Vector3(0,3.4,0)};
 
 /* Lumières */
 scene.add(new THREE.HemisphereLight(0xbcd2f0, 0x141a22, 0.85));
@@ -470,73 +470,115 @@ function hose(points,r){
   return new THREE.Mesh(new THREE.TubeGeometry(curve,28,r||0.05,8,false), matHose);
 }
 
+/* Plaque plate à bouts arrondis ("os") : la signature visuelle du Moveo.
+   Longueur selon +Y, épaisseur selon Z. r1 = rayon du bout bas, r2 = bout haut. */
+function bonePlate(len, r1, r2, th, mat, id){
+  const s = new THREE.Shape();
+  s.moveTo(r1, 0);
+  s.lineTo(r2, len);
+  s.absarc(0, len, r2, 0, Math.PI, false);
+  s.lineTo(-r1, 0);
+  s.absarc(0, 0, r1, Math.PI, Math.PI*2, false);
+  const g = new THREE.ExtrudeGeometry(s, {depth:th, bevelEnabled:true, bevelThickness:th*0.14,
+    bevelSize:th*0.14, bevelSegments:2, curveSegments:26});
+  g.translate(0, 0, -th/2);
+  const m = new THREE.Mesh(g, mat||matMetal);
+  if(id) m.userData.partId = id;
+  return m;
+}
+// Deux flasques parallèles (structure ouverte du Moveo) + entretoise
+function forkSegment(parent, len, r1, r2, th, halfWidth, id){
+  [-halfWidth, halfWidth].forEach(x=>{
+    const p = bonePlate(len, r1, r2, th, matMetal, id);
+    p.rotation.y = Math.PI/2;            // épaisseur selon X -> flasque latéral
+    p.position.x = x;
+    parent.add(p);
+  });
+  const brace = box(halfWidth*1.7, len*0.42, th*1.2, matGrey, id);
+  brace.position.y = len*0.5; parent.add(brace);
+}
+// Moteur pas-à-pas (corps carré NEMA)
+function nema(size, mat, id){
+  const m = box(size, size, size, mat||matDark, id);
+  return m;
+}
+
 const root = new THREE.Group(); scene.add(root);
 
-// Socle massif
-const plate = cyl(1.75,1.9,0.14,matDark); plate.position.y=0.07; plate.userData.partId='base'; root.add(plate);
-const base = cyl(1.5,1.6,0.5,matGrey,'base'); base.position.y=0.4; root.add(base);
-base.add(ring(1.35,0.045));
-const baseCap = cyl(1.15,1.4,0.28,matMetal,'base'); baseCap.position.y=0.78; root.add(baseCap);
+// --- Socle fixe : plateau + embase ---
+const plate = box(3.2, 0.14, 3.2, matDark); plate.position.y=0.07; plate.userData.partId='base'; root.add(plate);
+const base = cyl(1.08, 1.18, 0.32, matGrey, 'base'); base.position.y=0.3; root.add(base);
+base.add(ring(0.98, 0.04));
 
-// Taille rotative (yaw)
-const yawG = new THREE.Group(); yawG.position.y=0.92; root.add(yawG);
-const waist = cyl(0.95,1.05,0.8,matMetal,'yaw'); waist.position.y=0.4; yawG.add(waist);
-waist.add(ring(0.78,0.04));
-// chape d'épaule qui monte
-const yoke = box(1.25,0.7,0.7,matGrey,'yaw'); yoke.position.y=0.95; yawG.add(yoke);
+// --- Axe 1 : colonne tournante (yaw) ---
+const yawG = new THREE.Group(); yawG.position.y=0.46; root.add(yawG);
+const waist = cyl(0.86, 0.92, 1.12, matMetal, 'yaw'); waist.position.y=0.56; yawG.add(waist);
+const topFlange = cyl(0.99, 0.99, 0.1, matGrey, 'yaw'); topFlange.position.y=1.17; yawG.add(topFlange);
+for(let i=0;i<8;i++){                                  // cercle de boulons du plateau tournant
+  const a=i/8*Math.PI*2, b=cyl(0.05,0.05,0.13,matDark,'yaw',10);
+  b.position.set(Math.cos(a)*0.8, 1.2, Math.sin(a)*0.8); yawG.add(b);
+}
+// Chape d'épaule : deux flasques verticaux qui montent vers l'axe 2
+const SH_Y = 1.95;
+[-0.54, 0.54].forEach(x=>{
+  const p = bonePlate(SH_Y-1.22, 0.34, 0.44, 0.17, matMetal, 'yaw');
+  p.rotation.y = Math.PI/2; p.position.set(x, 1.22, 0); yawG.add(p);
+});
+const m1 = nema(0.62, matDark, 'shoulder'); m1.position.set(0.95, SH_Y-0.3, 0); yawG.add(m1);
 
-// Épaule (pitch)
-const shoulderG = new THREE.Group(); shoulderG.position.set(0,1.25,0); yawG.add(shoulderG);
-shoulderG.add(axis(0.5,1.3,matDark,'shoulder'));       // gros axe horizontal
-[-0.55,0.55].forEach(x=>{ const cap=cyl(0.52,0.52,0.12,matMetal,'shoulder'); cap.rotation.z=Math.PI/2; cap.position.x=x; shoulderG.add(cap); });
+// --- Axe 2 : épaule (pitch) ---
+const shoulderG = new THREE.Group(); shoulderG.position.set(0, SH_Y, 0); yawG.add(shoulderG);
+shoulderG.add(axis(0.34, 1.24, matDark, 'shoulder'));
+[-0.56, 0.56].forEach(x=>{ const c=cyl(0.36,0.36,0.1,matMetal,'shoulder'); c.rotation.z=Math.PI/2; c.position.x=x; shoulderG.add(c); });
 
-// Bras supérieur (poutre)
+// --- Bras supérieur : épaule -> coude (200 mm) ---
 const L1=2.4;
 const upper = new THREE.Group(); shoulderG.add(upper);
-const upperBeam = box(0.82,L1,0.64,matMetal,'upper'); upperBeam.position.y=L1/2; upper.add(upperBeam);
-[-0.42,0.42].forEach(x=>{ const rail=box(0.07,L1*0.92,0.7,matGrey,'upper'); rail.position.set(x,L1/2,0); upper.add(rail); });
-upper.add(hose([[-0.34,0.15,-0.28],[-0.28,0.9,-0.34],[-0.3,1.7,-0.3],[-0.26,2.25,-0.24]],0.06)); // gaine dorsale
+forkSegment(upper, L1, 0.36, 0.30, 0.15, 0.44, 'upper');
+upper.add(hose([[-0.36,0.2,-0.2],[-0.32,1.0,-0.26],[-0.34,1.8,-0.22],[-0.3,2.25,-0.16]],0.055));
+const m2 = nema(0.44, matDark, 'elbow'); m2.position.set(0.56, L1-0.42, 0); upper.add(m2);
 
-// Coude (pitch)
+// --- Axe 3 : coude (pitch) ---
 const elbowG = new THREE.Group(); elbowG.position.y=L1; upper.add(elbowG);
-elbowG.add(axis(0.42,1.05,matDark,'elbow'));
-[-0.45,0.45].forEach(x=>{ const cap=cyl(0.44,0.44,0.1,matMetal,'elbow'); cap.rotation.z=Math.PI/2; cap.position.x=x; elbowG.add(cap); });
+elbowG.add(axis(0.28, 1.0, matDark, 'elbow'));
+[-0.46, 0.46].forEach(x=>{ const c=cyl(0.3,0.3,0.08,matMetal,'elbow'); c.rotation.z=Math.PI/2; c.position.x=x; elbowG.add(c); });
 
-// Avant-bras (poutre)
-const L2=2.0;
+// --- Avant-bras : coude -> poignet (190 mm) ---
+const L2=2.3;
 const fore = new THREE.Group(); elbowG.add(fore);
-const foreBeam = box(0.66,L2,0.54,matMetal,'forearm'); foreBeam.position.y=L2/2; fore.add(foreBeam);
-[-0.34,0.34].forEach(x=>{ const rail=box(0.06,L2*0.9,0.6,matGrey,'forearm'); rail.position.set(x,L2/2,0); fore.add(rail); });
-fore.add(hose([[0.28,0.15,-0.22],[0.24,0.8,-0.26],[0.26,1.5,-0.22],[0.22,1.9,-0.18]],0.05));
+forkSegment(fore, L2, 0.3, 0.24, 0.13, 0.34, 'forearm');
+fore.add(hose([[0.28,0.18,-0.18],[0.25,0.9,-0.22],[0.26,1.6,-0.18],[0.22,2.05,-0.14]],0.048));
+const m3 = nema(0.34, matDark, 'wrist'); m3.position.set(-0.44, L2-0.36, 0); fore.add(m3);
 
-// Poignet (pitch/yaw/roll)
+// --- Axes 4/5 : poignet (pitch / yaw / roll) ---
 const wristG = new THREE.Group(); wristG.position.y=L2; wristG.rotation.order='YXZ'; fore.add(wristG);
-const wrist1 = cyl(0.34,0.34,0.5,matDark,'wrist'); wrist1.position.y=0.25; wristG.add(wrist1);
-wrist1.add(ring(0.3,0.035));
-const wrist2 = cyl(0.3,0.3,0.34,matMetal,'wrist'); wrist2.position.y=0.55; wristG.add(wrist2);
+const wrist1 = cyl(0.28,0.3,0.44,matDark,'wrist'); wrist1.position.y=0.22; wristG.add(wrist1);
+wrist1.add(ring(0.26,0.03));
+const wrist2 = cyl(0.24,0.24,0.34,matMetal,'wrist'); wrist2.position.y=0.56; wristG.add(wrist2);
 
 // Œil / capteur (garde l'expression + l'humeur)
 const eyeMat = new THREE.MeshStandardMaterial({color:0x34d3ee, emissive:0x34d3ee, emissiveIntensity:1.3, roughness:0.3});
-const eyePod = cyl(0.14,0.16,0.16,matDark,'eye'); eyePod.rotation.x=Math.PI/2; eyePod.position.set(0,0.5,0.3); wristG.add(eyePod);
-const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1,18,14), eyeMat); eye.position.set(0,0.5,0.4); eye.userData.partId='eye'; wristG.add(eye);
+const eyePod = cyl(0.13,0.15,0.14,matDark,'eye'); eyePod.rotation.x=Math.PI/2; eyePod.position.set(0,0.52,0.26); wristG.add(eyePod);
+const eye = new THREE.Mesh(new THREE.SphereGeometry(0.095,18,14), eyeMat); eye.position.set(0,0.52,0.35); eye.userData.partId='eye'; wristG.add(eye);
 const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({map:radialTexture(0x34d3ee), color:0x34d3ee, transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending}));
-glowSpr.scale.set(0.8,0.8,1); glowSpr.position.set(0,0.5,0.42); wristG.add(glowSpr);
-const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.set(0,0.5,0.45); wristG.add(eyeLight);
+glowSpr.scale.set(0.8,0.8,1); glowSpr.position.set(0,0.52,0.37); wristG.add(glowSpr);
+const eyeLight = new THREE.PointLight(0x34d3ee, 0.6, 5); eyeLight.position.set(0,0.52,0.4); wristG.add(eyeLight);
 
-// Tête = préhenseur (pince à 3 doigts)
-const headG = new THREE.Group(); headG.position.y=0.72; wristG.add(headG);
-const flange = cyl(0.26,0.3,0.16,matMetal,'head'); flange.position.y=0.05; headG.add(flange);
-const palm = cyl(0.24,0.26,0.18,matGrey,'head'); palm.position.y=0.2; headG.add(palm);
-// Préhenseur 2 mâchoires (gripper-left / gripper-right) + engrenages
+// --- Pince : platine + servo + deux doigts incurvés ---
+const headG = new THREE.Group(); headG.position.y=0.86; wristG.add(headG);
+const flange = cyl(0.25,0.27,0.09,matMetal,'head'); flange.position.y=0.045; headG.add(flange);
+const servo = box(0.36,0.3,0.24,matDark,'head'); servo.position.y=0.22; headG.add(servo);
 const fingers = [];
 [0, Math.PI].forEach(a=>{
   const pv = new THREE.Group(); pv.rotation.y = a; headG.add(pv);
-  const knuckle = new THREE.Group(); knuckle.position.set(0.13,0.26,0); pv.add(knuckle);
-  const jaw = box(0.1,0.38,0.26,matMetal,'head'); jaw.position.y=0.17; knuckle.add(jaw);      // mâchoire large
-  const tip = box(0.09,0.2,0.24,matDark,'head'); tip.position.set(-0.05,0.36,0); tip.rotation.z=0.55; knuckle.add(tip); // bout crochu
+  const knuckle = new THREE.Group(); knuckle.position.set(0.14,0.36,0); pv.add(knuckle);
+  const jaw = bonePlate(0.34, 0.11, 0.08, 0.12, matMetal, 'head'); // phalange
+  jaw.rotation.y = Math.PI/2; knuckle.add(jaw);
+  const tip = bonePlate(0.2, 0.08, 0.05, 0.11, matDark, 'head');   // bout crochu
+  tip.rotation.y = Math.PI/2; tip.rotation.z = 0.75; tip.position.set(-0.02,0.33,0); knuckle.add(tip);
   fingers.push(knuckle);
 });
-[[-0.1,0.13,0],[0.1,0.13,0]].forEach(p=>{ const g=cyl(0.09,0.09,0.06,matDark,'head'); g.position.set(p[0],p[1],p[2]); headG.add(g); }); // servo-gear + idol-gear
+[[-0.11,0.1,0],[0.11,0.1,0]].forEach(p=>{ const g=cyl(0.085,0.085,0.055,matDark,'head'); g.position.set(p[0],p[1],p[2]); headG.add(g); }); // engrenages servo
 
 /* ---------- Assemblage des vraies pièces imprimées (STL) ----------
    Chaque module réel est monté sur le même groupe cinématique que le
@@ -633,7 +675,7 @@ function setAssembly(on){
   // (sinon les pièces débordent d'un segment sur l'autre et ça fait un tas).
   elbowG.position.y = on ? LINK_REAL.elbow : L1;
   wristG.position.y = on ? LINK_REAL.wrist : L2;
-  headG.position.y  = on ? LINK_REAL.head  : 0.72;
+  headG.position.y  = on ? LINK_REAL.head  : 0.86;
   root.traverse(o=>{
     if(!o.isMesh) return;
     if(o.userData.partId==='eye') return;          // l'oeil reste (l'ame)
@@ -659,7 +701,7 @@ root.traverse(o=>{ if(o.isMesh && o.userData.partId){ o.userData.mat0 = o.materi
 const hoverMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.5, metalness:0.5, roughness:0.3});
 const focusMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.4, roughness:0.25});
 let hoverPart=null, focusPart=null, camTween=null, scanRings=[];
-const CAM_HOME = {theta:0.7, phi:1.0, r:12, target:new THREE.Vector3(0,3,0)};
+const CAM_HOME = {theta:0.7, phi:1.06, r:15.5, target:new THREE.Vector3(0,3.4,0)};
 const lerp=(a,b,t)=>a+(b-a)*t;
 
 function meshesOf(id){ return partMeshes[id]||[]; }
@@ -1610,8 +1652,8 @@ setTimeout(()=>{ const bt=document.getElementById('boot'); if(bt){ bt.classList.
 const inArtifact = !!(window.claude && window.claude.use);
 if(!inArtifact) connectServer();
 // Le montage des vraies pièces (STL) n'est dispo que servi par le serveur (le CSP de l'artifact bloque les STL).
-// Servi par Railway : on affiche direct le VRAI bras Moveo (le bouton permet de repasser en stylisé).
-if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab){ ab.hidden=false; toggleAssembly(ab); } }
+// Le corps par défaut est le Moveo modélisé ; le bouton permet de charger les vraies pièces STL.
+if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab) ab.hidden=false; }
 (async function initAI(){
   if(!inArtifact){ updateChip(); return; }
   try{
