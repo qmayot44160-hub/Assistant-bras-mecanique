@@ -1554,7 +1554,8 @@ setTimeout(()=>{ const bt=document.getElementById('boot'); if(bt){ bt.classList.
 const inArtifact = !!(window.claude && window.claude.use);
 if(!inArtifact) connectServer();
 // Le montage des vraies pièces (STL) n'est dispo que servi par le serveur (le CSP de l'artifact bloque les STL).
-if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab) ab.hidden=false; }
+// Servi par Railway : on affiche direct le VRAI bras Moveo (le bouton permet de repasser en stylisé).
+if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab){ ab.hidden=false; toggleAssembly(ab); } }
 (async function initAI(){
   if(!inArtifact){ updateChip(); return; }
   try{
