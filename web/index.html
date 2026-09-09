@@ -553,6 +553,9 @@ const JLIM = {
   wrist2:   [deg(-60), deg(90)],
 };
 const ASM_SCALE = 0.0125;                 // ~1 unité = 80 mm
+// Longueurs réelles des segments (mm réels * ASM_SCALE) : épaule->coude 200,
+// coude->poignet 190, poignet->pince 130. Utilisées seulement en vue assemblée.
+const LINK_REAL = { elbow: 200*ASM_SCALE, wrist: 190*ASM_SCALE, head: 130*ASM_SCALE };
 const ASM_GROUPS = { root, yawG, upper, fore, wristG, headG };
 // grp: groupe animé | p:[x,y,z] position du centre (unités scène) | r:[x,y,z] rotation deg | id: module (survol/focus)
 // Pieces authored Y-up (les grosses pieces ont leur longueur en Y) -> pas de rot par defaut.
@@ -564,22 +567,23 @@ const ASM = [
   {code:'0007-0101', grp:'yawG',  id:'yaw',  p:[0,0.85,0], r:[0,0,0]},
   {code:'0007-0102', grp:'yawG',  id:'yaw',  p:[0,1.15,0], r:[0,0,0], off:true},
   // Module 2 - epaule / bras superieur (grp upper, +Y jusqu'a L1=2.4)
-  {code:'0007-0201', grp:'upper', id:'upper', p:[0,1.2,0], r:[0,0,0]},
+  {code:'0007-0201', grp:'upper', id:'upper', p:[0,1.25,0], r:[0,0,0]},
   {code:'0007-0202', grp:'upper', id:'upper', p:[0.5,0.6,0],  r:[0,0,0], off:true},
   {code:'0007-0203', grp:'upper', id:'upper', p:[-0.5,0.6,0], r:[0,0,0], off:true},
   // Module 3 - avant-bras (grp fore, +Y jusqu'a L2=2.0)
-  {code:'0007-0301', grp:'fore',  id:'forearm', p:[0,1.0,0], r:[0,0,0]},
+  {code:'0007-0301', grp:'fore',  id:'forearm', p:[0,1.19,0], r:[0,0,0]},
   {code:'0007-0302', grp:'fore',  id:'forearm', p:[0.45,0.5,0],  r:[0,0,0], off:true},
   {code:'0007-0303', grp:'fore',  id:'forearm', p:[-0.45,0.5,0], r:[0,0,0], off:true},
   // Module 4 - poignet (grp wristG)
-  {code:'0007-0401', grp:'wristG', id:'wrist', p:[0,0.7,0], r:[0,0,0]},
+  {code:'0007-0401', grp:'wristG', id:'wrist', p:[0,0.81,0], r:[0,0,0]},
   // Module 5 - pince (grp headG)
   {code:'0007-0501', grp:'headG', id:'head', p:[0,0.15,0], r:[0,0,0]},
   {code:'0007-0508', grp:'headG', id:'head', p:[0,0.3,0],  r:[0,0,0], off:true},
   {code:'0007-0503', grp:'headG', id:'head', p:[0.18,0.5,0],  r:[0,0,0]},
   {code:'0007-0504', grp:'headG', id:'head', p:[-0.18,0.5,0], r:[0,0,0]},
 ];
-const matPart = new THREE.MeshStandardMaterial({color:0xccd3de, metalness:0.55, roughness:0.4, envMapIntensity:1.15});
+// Plastique imprimé sombre, comme les vraies pièces ABS/PETG des photos du guide.
+const matPart = new THREE.MeshStandardMaterial({color:0x4a505a, metalness:0.15, roughness:0.62, envMapIntensity:0.75});
 let asmBuilt=false, assemblyOn=false, showDetail=false;
 const asmMeshes=[];
 const hiddenModules=new Set();     // partIds masqués par l'utilisateur (panneau Modules)
@@ -625,6 +629,11 @@ function buildAssembly(){
 function setAssembly(on){
   assemblyOn=on;
   if(on) buildAssembly();
+  // Longueurs de segments : calées sur les VRAIES pièces en vue assemblée
+  // (sinon les pièces débordent d'un segment sur l'autre et ça fait un tas).
+  elbowG.position.y = on ? LINK_REAL.elbow : L1;
+  wristG.position.y = on ? LINK_REAL.wrist : L2;
+  headG.position.y  = on ? LINK_REAL.head  : 0.72;
   root.traverse(o=>{
     if(!o.isMesh) return;
     if(o.userData.partId==='eye') return;          // l'oeil reste (l'ame)
@@ -636,9 +645,10 @@ function toggleAssembly(btn){
   setAssembly(!assemblyOn);
   if(btn){ btn.classList.toggle('active', assemblyOn);
     btn.innerHTML = assemblyOn ? '<span class="ic">🧊</span>Vue stylisée' : '<span class="ic">🦾</span>Vraies pièces'; }
-  // Le bras réel est plus compact : on recule un peu la caméra pour bien le cadrer au-dessus du HUD.
+  // Le bras réel est plus grand (vraies longueurs de segments) : on recule la
+  // caméra et on vise plus haut pour le cadrer entier au-dessus du HUD.
   camTween = null;
-  if(assemblyOn){ orbit.theta=0.6; orbit.phi=1.22; orbit.r=17; orbit.target.set(0,1.5,0); }
+  if(assemblyOn){ orbit.theta=0.6; orbit.phi=1.18; orbit.r=22; orbit.target.set(0,3.0,0); }
   else { orbit.theta=CAM_HOME.theta; orbit.phi=CAM_HOME.phi; orbit.r=CAM_HOME.r; orbit.target.copy(CAM_HOME.target); }
   log('etat', assemblyOn ? 'montage: vraies pièces imprimées (Moveo)' : 'montage: vue stylisée');
 }
