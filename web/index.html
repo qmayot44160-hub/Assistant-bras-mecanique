@@ -539,6 +539,14 @@ const fingers = [];
    scène) pour garder les vraies proportions. Config data-driven : on ajuste
    position/rotation pièce par pièce sans toucher au reste. */
 const deg = d => d*Math.PI/180;
+// Vraies amplitudes articulaires du bras (guide TomKnox, en degrés -> radians)
+const JLIM = {
+  base:     [deg(-60), deg(90)],
+  shoulder: [deg(-110), deg(110)],
+  elbow:    [deg(-60), deg(90)],
+  wrist1:   [deg(-60), deg(90)],
+  wrist2:   [deg(-60), deg(90)],
+};
 const ASM_SCALE = 0.0125;                 // ~1 unité = 80 mm
 const ASM_GROUPS = { root, yawG, upper, fore, wristG, headG };
 // grp: groupe animé | p:[x,y,z] position du centre (unités scène) | r:[x,y,z] rotation deg | id: module (survol/focus)
@@ -1004,13 +1012,14 @@ function frame(now){
   // Respiration
   const breathe = REDUCED ? 0 : Math.sin(clock*1.4)*0.02 * (brain.awake?1:0.3);
 
-  // Application
-  yawG.rotation.y      = cur.yaw + off.yaw;
-  shoulderG.rotation.x = cur.shoulder + off.shoulder + breathe;
-  elbowG.rotation.x    = cur.elbow + off.elbow - breathe*0.5;
-  wristG.rotation.x    = cur.wristX + off.wristPitch + off.headBob;
-  wristG.rotation.y    = cur.wristY + off.wristYaw;
-  wristG.rotation.z    = cur.wristZ + off.wristRoll;
+  // Application, bornée aux vraies amplitudes du bras (guide TomKnox / Moveo)
+  const cl=(v,a,b)=>v<a?a:(v>b?b:v);
+  yawG.rotation.y      = cl(cur.yaw + off.yaw, JLIM.base[0], JLIM.base[1]);
+  shoulderG.rotation.x = cl(cur.shoulder + off.shoulder + breathe, JLIM.shoulder[0], JLIM.shoulder[1]);
+  elbowG.rotation.x    = cl(cur.elbow + off.elbow - breathe*0.5, JLIM.elbow[0], JLIM.elbow[1]);
+  wristG.rotation.x    = cl(cur.wristX + off.wristPitch + off.headBob, JLIM.wrist1[0], JLIM.wrist1[1]);
+  wristG.rotation.y    = cl(cur.wristY + off.wristYaw, JLIM.wrist2[0], JLIM.wrist2[1]);
+  wristG.rotation.z    = cl(cur.wristZ + off.wristRoll, JLIM.wrist2[0], JLIM.wrist2[1]);
 
   // Œil : couleur + pulsation + clignement
   const col = new THREE.Color(EYE_COLORS[brain.state]);
