@@ -146,6 +146,11 @@
   .mv-tag{position:absolute;left:8px;bottom:8px;color:var(--muted);font-family:var(--mono);
     font-size:10px;letter-spacing:.04em;background:rgba(6,9,14,.6);padding:3px 7px;border-radius:6px;
     pointer-events:none}
+  .modtog{display:flex;flex-direction:column;gap:2px}
+  .modrow{display:flex;align-items:center;gap:9px;padding:7px 4px;border-radius:8px;cursor:pointer;
+    font-size:13px;color:var(--text)}
+  .modrow:hover{background:rgba(255,255,255,.04)}
+  .modrow input{width:16px;height:16px;accent-color:var(--cyan);cursor:pointer;flex:0 0 auto}
   .blk h3{font-family:var(--disp);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
   .blk p{margin:0;font-size:13.5px;line-height:1.55}
   .kvgrid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
@@ -575,8 +580,24 @@ const ASM = [
   {code:'0007-0504', grp:'headG', id:'head', p:[-0.18,0.5,0], r:[0,0,0]},
 ];
 const matPart = new THREE.MeshStandardMaterial({color:0xccd3de, metalness:0.55, roughness:0.4, envMapIntensity:1.15});
-let asmBuilt=false, assemblyOn=false;
+let asmBuilt=false, assemblyOn=false, showDetail=false;
 const asmMeshes=[];
+const hiddenModules=new Set();     // partIds masqués par l'utilisateur (panneau Modules)
+// Modules affichables dans le panneau (vue réelle)
+const MODULES=[
+  {id:'base',    label:'Socle + rotation base'},
+  {id:'yaw',     label:'Base tournante'},
+  {id:'upper',   label:'Épaule / bras supérieur'},
+  {id:'forearm', label:'Avant-bras'},
+  {id:'wrist',   label:'Poignet'},
+  {id:'head',    label:'Pince / tête'},
+];
+function asmVisible(m){
+  return assemblyOn && !hiddenModules.has(m.userData.partId) && (!m.userData.off || showDetail);
+}
+function applyAsmVisibility(){
+  asmMeshes.forEach(m=>{ m.visible = asmVisible(m); });
+}
 function buildAssembly(){
   if(asmBuilt || !window.THREE || !THREE.STLLoader) return;
   asmBuilt=true;
@@ -595,9 +616,9 @@ function buildAssembly(){
       m.userData.asm = true;
       m.userData.code = cfg.code;
       m.userData.off = !!cfg.off;
-      m.visible = assemblyOn && !cfg.off;
       grp.add(m);
       asmMeshes.push(m);
+      m.visible = asmVisible(m);
     }, undefined, ()=>{ /* piece absente: on ignore */ });
   });
 }
@@ -607,7 +628,7 @@ function setAssembly(on){
   root.traverse(o=>{
     if(!o.isMesh) return;
     if(o.userData.partId==='eye') return;          // l'oeil reste (l'ame)
-    if(o.userData.asm) o.visible = on && !o.userData.off;  // vraies pieces (off = masquee)
+    if(o.userData.asm) o.visible = asmVisible(o);  // vraies pieces
     else o.visible = !on;                          // pieces stylisees
   });
 }
@@ -1223,6 +1244,13 @@ function openCatalogue(){
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
   let h = `<div class="sheet-head"><h2>Catalogue des pièces</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
   h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">Fiches, photos et PDF enregistrés ${catalogBackend?'sur le serveur (/data)':'dans ce navigateur'}.</div>`;
+  if(assemblyOn && !inArtifact){
+    h += `<div class="blk"><h3>Vue réelle - modules affichés</h3><div class="modtog">`;
+    for(const m of MODULES)
+      h += `<label class="modrow"><input type="checkbox" data-mod="${m.id}"${hiddenModules.has(m.id)?'':' checked'}><span>${esc(m.label)}</span></label>`;
+    h += `<label class="modrow"><input type="checkbox" data-detail${showDetail?' checked':''}><span>Pièces de détail (flasques, plaques...)</span></label>`;
+    h += `</div></div>`;
+  }
   for(const [cat,label] of groups){
     const items = CATALOG.filter(p=>p.category===cat);
     if(!items.length) continue;
@@ -1235,6 +1263,13 @@ function openCatalogue(){
   h += `<div class="blk"><button class="filebtn" data-act="reset" style="width:100%;justify-content:center;color:var(--dim)">↺ Réinitialiser au catalogue de référence</button></div>`;
   h += `</div>`;
   sheetEl.innerHTML = h; sheetEl.classList.add('open');
+  sheetEl.querySelectorAll('input[data-mod]').forEach(cb=>cb.addEventListener('change',()=>{
+    const id=cb.getAttribute('data-mod');
+    if(cb.checked) hiddenModules.delete(id); else hiddenModules.add(id);
+    applyAsmVisibility();
+  }));
+  const dt=sheetEl.querySelector('input[data-detail]');
+  if(dt) dt.addEventListener('change',()=>{ showDetail=dt.checked; applyAsmVisibility(); });
 }
 
 function openPartSheet(id, point){
