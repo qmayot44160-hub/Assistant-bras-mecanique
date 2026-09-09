@@ -1011,10 +1011,12 @@ let clock = 0, last = performance.now();
 function targetPose(){
   if(brain.awake){
     const a = brain.attention;
-    return { yaw:a.x*0.85, shoulder:-0.45 - a.y*0.35, elbow:1.15,
-             wristX:-0.32 + a.y*0.55, wristY:a.x*0.28, wristZ:0 };
+    // Éveillé : posture redressée, proche de la station debout du vrai bras.
+    return { yaw:a.x*0.85, shoulder:-0.22 - a.y*0.3, elbow:0.55,
+             wristX:-0.2 + a.y*0.5, wristY:a.x*0.28, wristZ:0 };
   }
-  return { yaw:cur.yaw*0.95, shoulder:0.55, elbow:1.95, wristX:0.82, wristY:0, wristZ:0.16 };
+  // En veille : le bras se replie sur lui-même.
+  return { yaw:cur.yaw*0.95, shoulder:0.45, elbow:1.5, wristX:0.7, wristY:0, wristZ:0.16 };
 }
 
 function frame(now){
