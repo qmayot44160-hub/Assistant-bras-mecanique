@@ -357,6 +357,7 @@
     <button class="act" data-cmd="ask"><span class="ic">❓</span>Pose une question</button>
     <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
     <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
+    <button class="act" id="asmBtn" data-cmd="assemble" hidden><span class="ic">🦾</span>Vraies pièces</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
     <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
@@ -531,6 +532,87 @@ const fingers = [];
   fingers.push(knuckle);
 });
 [[-0.1,0.13,0],[0.1,0.13,0]].forEach(p=>{ const g=cyl(0.09,0.09,0.06,matDark,'head'); g.position.set(p[0],p[1],p[2]); headG.add(g); }); // servo-gear + idol-gear
+
+/* ---------- Assemblage des vraies pièces imprimées (STL) ----------
+   Chaque module réel est monté sur le même groupe cinématique que le
+   bras stylisé, donc il bouge pareil. Échelle réelle UNIFORME (mm -> unités
+   scène) pour garder les vraies proportions. Config data-driven : on ajuste
+   position/rotation pièce par pièce sans toucher au reste. */
+const deg = d => d*Math.PI/180;
+const ASM_SCALE = 0.0125;                 // ~1 unité = 80 mm
+const ASM_GROUPS = { root, yawG, upper, fore, wristG, headG };
+// grp: groupe animé | p:[x,y,z] position du centre (unités scène) | r:[x,y,z] rotation deg | id: module (survol/focus)
+// Pieces authored Y-up (les grosses pieces ont leur longueur en Y) -> pas de rot par defaut.
+// off:true = chargee mais masquee (secondaire/orientation incertaine, togglable plus tard).
+const ASM = [
+  // Module 1 - socle + rotation base
+  {code:'0007-0801', grp:'root',  id:'base', p:[0,0.5,0],  r:[0,0,0]},
+  {code:'0007-0103', grp:'yawG',  id:'yaw',  p:[0,0.35,0], r:[0,0,0]},
+  {code:'0007-0101', grp:'yawG',  id:'yaw',  p:[0,0.85,0], r:[0,0,0]},
+  {code:'0007-0102', grp:'yawG',  id:'yaw',  p:[0,1.15,0], r:[0,0,0], off:true},
+  // Module 2 - epaule / bras superieur (grp upper, +Y jusqu'a L1=2.4)
+  {code:'0007-0201', grp:'upper', id:'upper', p:[0,1.2,0], r:[0,0,0]},
+  {code:'0007-0202', grp:'upper', id:'upper', p:[0.5,0.6,0],  r:[0,0,0], off:true},
+  {code:'0007-0203', grp:'upper', id:'upper', p:[-0.5,0.6,0], r:[0,0,0], off:true},
+  // Module 3 - avant-bras (grp fore, +Y jusqu'a L2=2.0)
+  {code:'0007-0301', grp:'fore',  id:'forearm', p:[0,1.0,0], r:[0,0,0]},
+  {code:'0007-0302', grp:'fore',  id:'forearm', p:[0.45,0.5,0],  r:[0,0,0], off:true},
+  {code:'0007-0303', grp:'fore',  id:'forearm', p:[-0.45,0.5,0], r:[0,0,0], off:true},
+  // Module 4 - poignet (grp wristG)
+  {code:'0007-0401', grp:'wristG', id:'wrist', p:[0,0.7,0], r:[0,0,0]},
+  // Module 5 - pince (grp headG)
+  {code:'0007-0501', grp:'headG', id:'head', p:[0,0.15,0], r:[0,0,0]},
+  {code:'0007-0508', grp:'headG', id:'head', p:[0,0.3,0],  r:[0,0,0], off:true},
+  {code:'0007-0503', grp:'headG', id:'head', p:[0.18,0.5,0],  r:[0,0,0]},
+  {code:'0007-0504', grp:'headG', id:'head', p:[-0.18,0.5,0], r:[0,0,0]},
+];
+const matPart = new THREE.MeshStandardMaterial({color:0xccd3de, metalness:0.55, roughness:0.4, envMapIntensity:1.15});
+let asmBuilt=false, assemblyOn=false;
+const asmMeshes=[];
+function buildAssembly(){
+  if(asmBuilt || !window.THREE || !THREE.STLLoader) return;
+  asmBuilt=true;
+  const loader=new THREE.STLLoader();
+  ASM.forEach(cfg=>{
+    const grp=ASM_GROUPS[cfg.grp]; if(!grp) return;
+    loader.load('models/'+cfg.code+'.stl', geo=>{
+      geo.computeBoundingBox();
+      const c=geo.boundingBox.getCenter(new THREE.Vector3());
+      geo.translate(-c.x,-c.y,-c.z);                 // origine = centre de la piece
+      const m=new THREE.Mesh(geo, matPart);
+      m.scale.setScalar(ASM_SCALE * (cfg.s||1));
+      m.rotation.set(deg(cfg.r[0]), deg(cfg.r[1]), deg(cfg.r[2]));
+      m.position.set(cfg.p[0], cfg.p[1], cfg.p[2]);
+      m.userData.partId = cfg.id;
+      m.userData.asm = true;
+      m.userData.code = cfg.code;
+      m.userData.off = !!cfg.off;
+      m.visible = assemblyOn && !cfg.off;
+      grp.add(m);
+      asmMeshes.push(m);
+    }, undefined, ()=>{ /* piece absente: on ignore */ });
+  });
+}
+function setAssembly(on){
+  assemblyOn=on;
+  if(on) buildAssembly();
+  root.traverse(o=>{
+    if(!o.isMesh) return;
+    if(o.userData.partId==='eye') return;          // l'oeil reste (l'ame)
+    if(o.userData.asm) o.visible = on && !o.userData.off;  // vraies pieces (off = masquee)
+    else o.visible = !on;                          // pieces stylisees
+  });
+}
+function toggleAssembly(btn){
+  setAssembly(!assemblyOn);
+  if(btn){ btn.classList.toggle('active', assemblyOn);
+    btn.innerHTML = assemblyOn ? '<span class="ic">🧊</span>Vue stylisée' : '<span class="ic">🦾</span>Vraies pièces'; }
+  // Le bras réel est plus compact : on recule un peu la caméra pour bien le cadrer au-dessus du HUD.
+  camTween = null;
+  if(assemblyOn){ orbit.theta=0.6; orbit.phi=1.22; orbit.r=17; orbit.target.set(0,1.5,0); }
+  else { orbit.theta=CAM_HOME.theta; orbit.phi=CAM_HOME.phi; orbit.r=CAM_HOME.r; orbit.target.copy(CAM_HOME.target); }
+  log('etat', assemblyOn ? 'montage: vraies pièces imprimées (Moveo)' : 'montage: vue stylisée');
+}
 
 /* ---------- FX JARVIS : survol, focus caméra, anneau de scan ---------- */
 const partMeshes = {};
@@ -1036,6 +1118,7 @@ document.querySelectorAll('button.act').forEach(b=>{
     const c = b.dataset.cmd;
     ensureAudio(); if(c) sfx('click');
     if(c==='parts'){ openCatalogue(); return; }
+    if(c==='assemble'){ toggleAssembly(b); return; }
     if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
       if(c==='greet') serverSend({type:'say', text:'bonjour'});
       else if(c==='ask') serverSend({type:'say', text:'une question ?'});
@@ -1470,6 +1553,8 @@ setTimeout(()=>{ const bt=document.getElementById('boot'); if(bt){ bt.classList.
    - fichier local -> réflexes seuls */
 const inArtifact = !!(window.claude && window.claude.use);
 if(!inArtifact) connectServer();
+// Le montage des vraies pièces (STL) n'est dispo que servi par le serveur (le CSP de l'artifact bloque les STL).
+if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab) ab.hidden=false; }
 (async function initAI(){
   if(!inArtifact){ updateChip(); return; }
   try{
