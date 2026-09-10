@@ -20,6 +20,14 @@ import re
 
 MODEL = os.environ.get("ARIA_MODEL", "claude-opus-5")
 
+# Dernière erreur d'appel, exposée par /health : sans ça un échec d'API est
+# invisible depuis l'app et on croit qu'ARIA est simplement bête.
+_LAST_ERROR: str | None = None
+
+
+def last_error() -> str | None:
+    return _LAST_ERROR
+
 try:
     import memory
 except ImportError:
@@ -115,6 +123,7 @@ async def decide_json(brain, text: str):
             kwargs["output_config"] = {"effort": "low"}
         msg = await client.messages.create(**kwargs)
         raw = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
+        globals()["_LAST_ERROR"] = None
         d = _parse(raw)
         if d is None and raw.strip():
             # Le modèle a répondu en clair au lieu du JSON attendu : on garde sa
@@ -123,5 +132,7 @@ async def decide_json(brain, text: str):
                  "say": re.sub(r"\s+", " ", raw.strip())[:220], "sleep": False}
         return d
     except Exception as e:  # clé invalide, réseau, param non supporté... -> repli
-        print("ai_layer: repli scripté (", type(e).__name__, e, ")")
+        global _LAST_ERROR
+        _LAST_ERROR = type(e).__name__ + ": " + str(e)[:300]
+        print("ai_layer: repli scripté (", _LAST_ERROR, ")")
         return None

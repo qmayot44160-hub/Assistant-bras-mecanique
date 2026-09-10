@@ -107,7 +107,7 @@ async def _start_loop() -> None:
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True, "state": brain.state, "awake": brain.awake,
-            "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available(),
+            "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available(), "claude_error": ai_layer.last_error(),
             "memory": memory.stats()}
 
 
@@ -139,8 +139,10 @@ async def on_say(text: str) -> list[dict]:
         # Repli scripté : on le dit, sinon on croit qu'ARIA est bête alors que
         # c'est l'appel au cerveau qui a échoué (clé, réseau, quota...).
         if BRAIN_MODE in ("claude", "local"):
+            why = ai_layer.last_error() if BRAIN_MODE == "claude" else None
             events.append({"type": "log", "layer": "etat",
-                           "msg": "cerveau " + BRAIN_MODE + " indisponible -> repli réflexes"})
+                           "msg": "cerveau " + BRAIN_MODE + " indisponible -> repli réflexes"
+                                  + (" (" + why + ")" if why else "")})
         events += brain.interpret_scripted(text)
 
     try:
