@@ -29,12 +29,14 @@ try:
     import catalog
     import ai_layer
     import local_brain
+    import memory
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
     from brain import catalog
     from brain import ai_layer
     from brain import local_brain
+    from brain import memory
 
 # Choix du cerveau : local (modèle sur le serveur) | claude (API) | scripted (règles)
 BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
@@ -105,14 +107,27 @@ async def _start_loop() -> None:
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True, "state": brain.state, "awake": brain.awake,
-            "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available()}
+            "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available(),
+            "memory": memory.stats()}
 
 
 async def on_say(text: str) -> list[dict]:
-    """Dialogue : cerveau local si dispo, sinon Claude si choisi, sinon repli scripté."""
+    """Dialogue : cerveau local si dispo, sinon Claude si choisi, sinon repli scripté.
+
+    La mémoire est lue AVANT (le cerveau la reçoit dans son prompt) et écrite
+    APRÈS (la phrase de l'humain, ce qu'on en a appris, puis la réponse d'ARIA).
+    """
     if not text.strip():
         return []
     events = brain.say_prefix(text)
+
+    learned = []
+    try:
+        learned = memory.learn_from(text)      # extrait prénom, goûts, "retiens que..."
+        memory.add_event("user", text)
+    except Exception:
+        pass
+
     decision = None
     if BRAIN_MODE == "local":
         decision = await local_brain.decide_json(brain, text)
@@ -122,6 +137,15 @@ async def on_say(text: str) -> list[dict]:
         events += brain.apply_decision(decision)
     else:
         events += brain.interpret_scripted(text)
+
+    try:
+        said = [e.get("text", "") for e in events if e.get("type") == "thought"]
+        if said:
+            memory.add_event("aria", said[-1])
+        for item in learned:
+            events.append({"type": "log", "layer": "etat", "msg": "mémorisé : " + item})
+    except Exception:
+        pass
     return events
 
 
@@ -187,6 +211,48 @@ async def api_file(name: str) -> FileResponse:
     if not dest.exists():
         raise HTTPException(404, "fichier absent")
     return FileResponse(dest)
+
+
+# --- Mémoire d'ARIA -------------------------------------------------------
+@app.get("/api/memory")
+async def api_memory() -> dict:
+    data = memory.load()
+    data["stats"] = memory.stats()
+    return data
+
+
+@app.post("/api/memory/fact")
+async def api_memory_fact(item: dict) -> dict:
+    key = str(item.get("key") or "").strip()
+    value = str(item.get("value") or "").strip()
+    if not key or not value:
+        raise HTTPException(400, "key et value requis")
+    memory.set_fact(key, value)
+    return memory.load()
+
+
+@app.delete("/api/memory/fact/{key}")
+async def api_memory_forget(key: str) -> dict:
+    return {"deleted": memory.forget_fact(key)}
+
+
+@app.post("/api/memory/note")
+async def api_memory_note(item: dict) -> dict:
+    text = str(item.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "text requis")
+    memory.add_note(text)
+    return memory.load()
+
+
+@app.delete("/api/memory/note/{index}")
+async def api_memory_forget_note(index: int) -> dict:
+    return {"deleted": memory.forget_note(index)}
+
+
+@app.post("/api/memory/clear")
+async def api_memory_clear() -> dict:
+    return memory.clear()
 
 
 @app.websocket("/ws")

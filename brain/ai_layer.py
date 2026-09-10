@@ -20,6 +20,11 @@ import re
 
 MODEL = os.environ.get("ARIA_MODEL", "claude-opus-5")
 
+try:
+    import memory
+except ImportError:
+    from brain import memory
+
 SYSTEM = (
     "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur et attachant, "
     "dans l'esprit d'un bras assistant de génie (façon 'Dummy'). Tu ne discutes pas "
@@ -52,7 +57,14 @@ def _get_client():
 
 
 def _prompt(brain, text: str) -> str:
-    return (
+    head = ""
+    try:
+        ctx = memory.context()
+        if ctx:
+            head = "MÉMOIRE (ce dont tu te souviens de lui, sers-t'en naturellement) :\n" + ctx + "\n\n"
+    except Exception:
+        head = ""
+    return head + (
         "État interne : éveil={}, énergie={:.2f}, curiosité={:.2f}, ennui={:.2f}, humeur={}.\n"
         'L\'humain te dit : "{}"'
     ).format(

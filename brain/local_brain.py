@@ -26,6 +26,11 @@ import urllib.request
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
+try:
+    import memory
+except ImportError:
+    from brain import memory
+
 LOCAL_SYSTEM = (
     "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur, attachant. "
     "Tu réponds en français, en UNE seule phrase courte (max 15 mots), sans tiret cadratin. "
@@ -65,13 +70,24 @@ def start_loading() -> None:
     _state["loading"] = False
 
 
+def _messages(text: str) -> list[dict]:
+    """Système + mémoire + phrase de l'humain."""
+    msgs = [{"role": "system", "content": LOCAL_SYSTEM}]
+    try:
+        ctx = memory.context()
+        if ctx:
+            msgs.append({"role": "system",
+                         "content": "Ce dont tu te souviens de lui :\n" + ctx})
+    except Exception:
+        pass
+    msgs.append({"role": "user", "content": (text or "").strip()})
+    return msgs
+
+
 def _generate(text: str) -> str:
     payload = json.dumps({
         "model": OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": LOCAL_SYSTEM},
-            {"role": "user", "content": (text or "").strip()},
-        ],
+        "messages": _messages(text),
         "stream": False,
         "options": {"temperature": 0.7, "top_p": 0.9, "num_predict": 80},
     }).encode("utf-8")

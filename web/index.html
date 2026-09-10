@@ -146,6 +146,21 @@
   .mv-tag{position:absolute;left:8px;bottom:8px;color:var(--muted);font-family:var(--mono);
     font-size:10px;letter-spacing:.04em;background:rgba(6,9,14,.6);padding:3px 7px;border-radius:6px;
     pointer-events:none}
+  .memlist{display:flex;flex-direction:column;gap:4px}
+  .memrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;
+    background:rgba(255,255,255,.035);border:1px solid var(--line)}
+  .memrow .mk{color:var(--cyan);font-family:var(--mono);font-size:11px;letter-spacing:.05em;
+    text-transform:uppercase;flex:0 0 auto;min-width:74px}
+  .memrow .mv{color:var(--text);font-size:13px;word-break:break-word}
+  .memrow .mt{color:var(--dim);font-family:var(--mono);font-size:10px;flex:0 0 auto}
+  .memrow .mx{background:none;border:0;color:var(--dim);cursor:pointer;font-size:13px;
+    padding:2px 4px;border-radius:5px;flex:0 0 auto}
+  .memrow .mx:hover{color:#ff6b6b;background:rgba(255,107,107,.12)}
+  .memlog{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow-y:auto}
+  .mlrow{display:flex;gap:8px;font-size:12.5px;line-height:1.45;padding:3px 0}
+  .mlrow .who{flex:0 0 auto;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+    text-transform:uppercase;padding-top:2px;min-width:34px}
+  .mlrow.me .who{color:var(--muted)} .mlrow.aria .who{color:var(--cyan)}
   .modtog{display:flex;flex-direction:column;gap:2px}
   .modrow{display:flex;align-items:center;gap:9px;padding:7px 4px;border-radius:8px;cursor:pointer;
     font-size:13px;color:var(--text)}
@@ -363,6 +378,7 @@
     <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
     <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
     <button class="act" id="asmBtn" data-cmd="assemble" hidden><span class="ic">🦾</span>Vraies pièces</button>
+    <button class="act" id="memBtn" data-cmd="memory" hidden><span class="ic">🧠</span>Mémoire</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
     <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
@@ -1203,6 +1219,7 @@ document.querySelectorAll('button.act').forEach(b=>{
     ensureAudio(); if(c) sfx('click');
     if(c==='parts'){ openCatalogue(); return; }
     if(c==='assemble'){ toggleAssembly(b); return; }
+    if(c==='memory'){ openMemory(); return; }
     if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
       if(c==='greet') serverSend({type:'say', text:'bonjour'});
       else if(c==='ask') serverSend({type:'say', text:'une question ?'});
@@ -1549,6 +1566,79 @@ async function newPart(){
   renderEdit(part); sheetEl.classList.add('open');
 }
 
+/* ---------- Mémoire d'ARIA (serveur /data) ---------- */
+function memAgo(ts){
+  const d=Math.max(0,(Date.now()/1000)-(ts||0));
+  if(d<60) return "à l'instant";
+  if(d<3600) return Math.floor(d/60)+' min';
+  if(d<86400) return Math.floor(d/3600)+' h';
+  return Math.floor(d/86400)+' j';
+}
+async function openMemory(){
+  disposeMiniViewer();
+  let m=null;
+  try{ const r=await fetch('/api/memory',{cache:'no-store'}); if(r.ok) m=await r.json(); }catch(_){}
+  let h = `<div class="sheet-head"><h2>Mémoire d'ARIA</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
+  if(!m){
+    h += `<div class="blk"><p>Mémoire indisponible : elle vit sur le serveur (/data).</p></div></div>`;
+    sheetEl.innerHTML=h; sheetEl.classList.add('open'); return;
+  }
+  const facts=m.facts||{}, notes=m.notes||[], events=m.events||[];
+  const nf=Object.keys(facts).length;
+  h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">`+
+       `${nf} fait${nf>1?'s':''} · ${notes.length} note${notes.length>1?'s':''} · ${events.length} échange${events.length>1?'s':''} gardés. Dis-lui « je m'appelle... » ou « retiens que... » pour la nourrir.</div>`;
+
+  h += `<div class="blk"><h3>Ce qu'elle sait de toi</h3>`;
+  if(nf){
+    h += `<div class="memlist">`;
+    for(const [k,v] of Object.entries(facts))
+      h += `<div class="memrow"><span class="mk">${esc(k)}</span><span class="mv">${esc(v.v)}</span>`+
+           `<button class="mx" data-act="mem-forget-fact" data-key="${esc(k)}" title="oublier">✕</button></div>`;
+    h += `</div>`;
+  } else h += `<p style="color:var(--dim)">Rien encore. Présente-toi !</p>`;
+  h += `</div>`;
+
+  h += `<div class="blk"><h3>Ce qu'elle doit retenir</h3>`;
+  if(notes.length){
+    h += `<div class="memlist">`;
+    notes.forEach((n,i)=>{
+      h += `<div class="memrow"><span class="mv" style="flex:1">${esc(n.t)}</span>`+
+           `<span class="mt">${memAgo(n.ts)}</span>`+
+           `<button class="mx" data-act="mem-forget-note" data-index="${i}" title="oublier">✕</button></div>`;
+    });
+    h += `</div>`;
+  } else h += `<p style="color:var(--dim)">Aucune note.</p>`;
+  h += `<button class="filebtn" data-act="mem-add" style="width:100%;justify-content:center;margin-top:8px">➕ Ajouter une note</button></div>`;
+
+  if(events.length){
+    h += `<div class="blk"><h3>Échanges récents</h3><div class="memlog">`;
+    for(const e of events.slice(-14))
+      h += `<div class="mlrow ${e.r==='user'?'me':'aria'}"><span class="who">${e.r==='user'?'toi':'ARIA'}</span><span>${esc(e.t)}</span></div>`;
+    h += `</div></div>`;
+  }
+
+  h += `<div class="blk"><button class="filebtn" data-act="mem-clear" style="width:100%;justify-content:center;color:#ff8b8b;border-color:rgba(255,139,139,.35)">🗑 Tout oublier</button></div>`;
+  h += `</div>`;
+  sheetEl.innerHTML = h; sheetEl.classList.add('open');
+}
+async function memForgetFact(key){
+  try{ await fetch('/api/memory/fact/'+encodeURIComponent(key),{method:'DELETE'}); }catch(_){}
+  log('etat','oublié : '+key); openMemory();
+}
+async function memForgetNote(i){
+  try{ await fetch('/api/memory/note/'+encodeURIComponent(i),{method:'DELETE'}); }catch(_){}
+  openMemory();
+}
+async function memClear(){
+  try{ await fetch('/api/memory/clear',{method:'POST'}); }catch(_){}
+  log('etat','mémoire effacée'); openMemory();
+}
+async function memAddNote(){
+  const t=prompt('Que doit-elle retenir ?'); if(!t||!t.trim()) return;
+  try{ await fetch('/api/memory/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t.trim()})}); }catch(_){}
+  openMemory();
+}
+
 sheetEl.addEventListener('click', e=>{
   const t=e.target.closest('[data-act],[data-open],[data-open-edit]'); if(!t) return;
   if(t.dataset.open){ openPartSheet(t.dataset.open); return; }
@@ -1560,6 +1650,11 @@ sheetEl.addEventListener('click', e=>{
   else if(a==='reset') resetCatalog();
   else if(a==='save') savePart(t.dataset.id);
   else if(a==='del'){ if(confirm('Supprimer cette pièce ?')) deletePart(t.dataset.id); }
+  else if(a==='memory') openMemory();
+  else if(a==='mem-forget-fact') memForgetFact(t.dataset.key);
+  else if(a==='mem-forget-note') memForgetNote(t.dataset.index);
+  else if(a==='mem-clear'){ if(confirm("Tout effacer ? ARIA oubliera tout ce qu'elle sait de toi.")) memClear(); }
+  else if(a==='mem-add') memAddNote();
 });
 
 /* ---------- DA JARVIS : sons, télémétrie, ligne de connexion, mode Or ---------- */
@@ -1654,6 +1749,8 @@ if(!inArtifact) connectServer();
 // Le montage des vraies pièces (STL) n'est dispo que servi par le serveur (le CSP de l'artifact bloque les STL).
 // Le corps par défaut est le Moveo modélisé ; le bouton permet de charger les vraies pièces STL.
 if(!inArtifact){ const ab=document.getElementById('asmBtn'); if(ab) ab.hidden=false; }
+// La mémoire vit sur le serveur (/data) : bouton visible seulement quand il est là.
+if(!inArtifact){ const mb=document.getElementById('memBtn'); if(mb) mb.hidden=false; }
 (async function initAI(){
   if(!inArtifact){ updateChip(); return; }
   try{
