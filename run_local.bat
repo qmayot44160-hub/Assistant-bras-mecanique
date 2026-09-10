@@ -6,6 +6,10 @@ title ARIA - cerveau local
 if "%OLLAMA_MODEL%"=="" set OLLAMA_MODEL=qwen2.5:7b
 set BRAIN_MODE=local
 
+rem Memoire + catalogue d'ARIA, ranges a cote de l'app (et pas dans C:\data).
+if "%DATA_DIR%"=="" set DATA_DIR=%~dp0data
+if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
+
 echo ============================================
 echo   ARIA - cerveau local (Ollama + RTX)
 echo ============================================
@@ -37,6 +41,7 @@ ollama pull %OLLAMA_MODEL%
 echo [3/3] Demarrage du serveur ARIA...
 echo.
 echo   Ouvre ton navigateur sur :  http://127.0.0.1:8000
+echo   Sa memoire est gardee dans :  %DATA_DIR%
 echo   (Ctrl+C dans cette fenetre pour arreter)
 echo.
 python -m uvicorn brain.main:app --host 127.0.0.1 --port 8000

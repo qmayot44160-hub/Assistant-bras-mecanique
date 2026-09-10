@@ -33,6 +33,25 @@ Double-clique **`run_local.bat`**. Il va, la première fois :
 Puis ouvre **http://127.0.0.1:8000** : c'est ARIA, avec son cerveau local qui
 tourne sur ta RTX. Parle-lui, il réfléchit tout seul (aucun appel externe).
 
+## Sa mémoire
+
+Tout ce qu'ARIA retient de toi (prénom, goûts, notes, échanges) est écrit dans
+le dossier `data/` créé à côté de l'app, dans le fichier `memory.json`. Rien ne
+sort de ton PC.
+
+Dis-lui « je m'appelle... », « j'habite à... » ou « retiens que... » et elle le
+garde. Le bouton **Mémoire** dans l'app montre ce qu'elle sait et permet
+d'oublier une chose précise, ou tout.
+
+Comme c'est un simple fichier, tu peux le sauvegarder, le copier sur une autre
+machine, ou le supprimer pour repartir de zéro.
+
+## En local, rien ne part dans le cloud
+
+Le cerveau tourne sur ta RTX via Ollama, la mémoire est sur ton disque. Aucune
+clé API, aucun crédit, aucun appel externe. Le seul compromis : ARIA n'existe
+que quand ton PC est allumé et que cette fenêtre reste ouverte.
+
 ## Choisir un autre modèle
 
 Avant de lancer, tu peux définir une variable `OLLAMA_MODEL`. Selon l'envie :

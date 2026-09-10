@@ -16,6 +16,7 @@ quasi instantanées, mettre ARIA_MODEL=claude-haiku-4-5.
 from __future__ import annotations
 import json
 import os
+import time
 import re
 
 MODEL = os.environ.get("ARIA_MODEL", "claude-opus-5")
@@ -27,6 +28,14 @@ _LAST_ERROR: str | None = None
 
 def last_error() -> str | None:
     return _LAST_ERROR
+
+
+# Coupe-circuit : inutile de rappeler une API qui refuse (crédits épuisés, clé
+# morte). Après 3 échecs d'affilée on met l'appel en pause, sinon chaque phrase
+# attend un aller-retour réseau pour rien.
+_FAILS = 0
+_MUTED_UNTIL = 0.0
+_MUTE_SECONDS = 300
 
 try:
     import memory
@@ -110,6 +119,9 @@ async def decide_json(brain, text: str):
     """Renvoie la décision {state,gesture,say,sleep} ou None (repli scripté)."""
     if not available():
         return None
+    global _FAILS, _MUTED_UNTIL
+    if time.monotonic() < _MUTED_UNTIL:
+        return None
     try:
         client = _get_client()
         kwargs = dict(
@@ -124,6 +136,7 @@ async def decide_json(brain, text: str):
         msg = await client.messages.create(**kwargs)
         raw = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
         globals()["_LAST_ERROR"] = None
+        _FAILS = 0
         d = _parse(raw)
         if d is None and raw.strip():
             # Le modèle a répondu en clair au lieu du JSON attendu : on garde sa
@@ -134,5 +147,9 @@ async def decide_json(brain, text: str):
     except Exception as e:  # clé invalide, réseau, param non supporté... -> repli
         global _LAST_ERROR
         _LAST_ERROR = type(e).__name__ + ": " + str(e)[:300]
+        _FAILS += 1
+        if _FAILS >= 3:
+            _MUTED_UNTIL = time.monotonic() + _MUTE_SECONDS
+            print("ai_layer: 3 échecs -> pause des appels", _MUTE_SECONDS, "s")
         print("ai_layer: repli scripté (", _LAST_ERROR, ")")
         return None
