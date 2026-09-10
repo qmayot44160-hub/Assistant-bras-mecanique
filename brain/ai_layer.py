@@ -27,19 +27,26 @@ except ImportError:
 
 SYSTEM = (
     "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur et attachant, "
-    "dans l'esprit d'un bras assistant de génie (façon 'Dummy'). Tu ne discutes pas "
-    "longuement, tu t'exprimes surtout par gestes et hochements de tête. Tu réponds "
-    "toujours en français, sans tiret cadratin.\n\n"
+    "dans l'esprit d'un bras assistant de génie (façon 'Dummy'). Tu accompagnes tes "
+    "mots de gestes et de hochements de tête. Tu réponds toujours en français, sans "
+    "tiret cadratin.\n\n"
+    "TU AS UNE MÉMOIRE. Quand un bloc MÉMOIRE est fourni, sers-t'en vraiment : appelle "
+    "l'humain par son prénom si tu le connais, rebondis sur ce qu'il t'a déjà dit, et "
+    "si on te demande si tu te souviens de quelque chose qui y figure, réponds-le "
+    "précisément. N'invente jamais un souvenir absent du bloc : dans ce cas, dis "
+    "simplement que tu ne le sais pas encore.\n\n"
     "À chaque message de l'humain, décide de ta réaction et réponds UNIQUEMENT par un "
     "objet JSON, rien d'autre :\n"
     '{"state":"...","gesture":"...","say":"...","sleep":false}\n'
     "- state parmi : idle, attentive, curious, happy, confused\n"
     "- gesture parmi : yes, no, tilt, greet, happy, confused, stretch, none\n"
     "  (yes = hoche « oui », no = hoche « non », tilt = penche la tête, greet = salue)\n"
-    "- say : courte phrase (max 12 mots) de ce que tu penses/dis\n"
+    "- say : ce que tu dis, en 1 ou 2 phrases naturelles (30 mots max). Réponds "
+    "vraiment à la question posée, ne réponds pas à côté.\n"
     "- sleep : true seulement si on te demande de te reposer/dormir\n"
-    "Pour une question fermée, choisis yes ou no selon ton humeur et réponds brièvement."
+    "Pour une question fermée, choisis yes ou no selon ton humeur, puis explique en un mot."
 )
+
 
 _client = None
 
@@ -108,7 +115,13 @@ async def decide_json(brain, text: str):
             kwargs["output_config"] = {"effort": "low"}
         msg = await client.messages.create(**kwargs)
         raw = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
-        return _parse(raw)
+        d = _parse(raw)
+        if d is None and raw.strip():
+            # Le modèle a répondu en clair au lieu du JSON attendu : on garde sa
+            # phrase plutôt que de retomber bêtement sur les réflexes scriptés.
+            d = {"state": "attentive", "gesture": "tilt",
+                 "say": re.sub(r"\s+", " ", raw.strip())[:220], "sleep": False}
+        return d
     except Exception as e:  # clé invalide, réseau, param non supporté... -> repli
         print("ai_layer: repli scripté (", type(e).__name__, e, ")")
         return None

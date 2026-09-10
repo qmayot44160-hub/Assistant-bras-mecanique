@@ -136,6 +136,11 @@ async def on_say(text: str) -> list[dict]:
     if decision is not None:
         events += brain.apply_decision(decision)
     else:
+        # Repli scripté : on le dit, sinon on croit qu'ARIA est bête alors que
+        # c'est l'appel au cerveau qui a échoué (clé, réseau, quota...).
+        if BRAIN_MODE in ("claude", "local"):
+            events.append({"type": "log", "layer": "etat",
+                           "msg": "cerveau " + BRAIN_MODE + " indisponible -> repli réflexes"})
         events += brain.interpret_scripted(text)
 
     try:

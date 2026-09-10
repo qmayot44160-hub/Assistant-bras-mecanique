@@ -152,7 +152,7 @@ class Brain:
             if yes:
                 return react("happy", "yes", "Oui.") + [self._ev("log", layer="decision", msg="question -> OUI")]
             return react("confused", "no", "Non.") + [self._ev("log", layer="decision", msg="question -> NON")]
-        return react("curious", "tilt", "En réflexes seuls, je ne saisis pas tout.")
+        return react("curious", "tilt", "Je n'ai pas bien saisi, tu peux reformuler ?")
 
     # SEAM : couche IA. À implémenter quand une clé LLM sera fournie
     # (variable d'environnement). Signature identique à interpret_scripted.
