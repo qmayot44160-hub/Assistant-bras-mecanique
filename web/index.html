@@ -1283,46 +1283,86 @@ if(voiceBtn){
 }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false;
+let rec = null, micWanted = false, micStrikes = 0, micStarted = 0;
 const micBtn = document.getElementById('micBtn');
 
 function setMic(on){
-  listening = on;
   if(!micBtn) return;
   micBtn.classList.toggle('active', on);
   micBtn.innerHTML = on ? '<span class="ic">⏹</span>J\'écoute'
                         : '<span class="ic">🎙</span>Micro';
 }
 
-function toggleMic(){
-  if(!SR){ log('etat', "ce navigateur ne sait pas écouter, essaie Chrome ou Edge"); return; }
-  if(listening){ try{ rec.stop(); }catch(e){} return; }
+function stopMic(pourquoi){
+  micWanted = false;
+  try{ if(rec) rec.stop(); }catch(e){}
+  setMic(false);
+  if(pourquoi) log('etat', 'micro : ' + pourquoi);
+}
+
+function startRec(){
   rec = new SR();
-  rec.lang = 'fr-FR'; rec.interimResults = true; rec.continuous = false;
-  let finalText = '';
+  rec.lang = 'fr-FR';
+  rec.interimResults = true;
+  // continuous : sans ça la reconnaissance se ferme à la première pause, et il
+  // fallait recliquer entre chaque phrase.
+  rec.continuous = true;
+
   rec.onresult = ev=>{
     let interim = '';
     for(let i = ev.resultIndex; i < ev.results.length; i++){
       const r = ev.results[i];
-      if(r.isFinal) finalText += r[0].transcript;
-      else interim += r[0].transcript;
+      if(!r.isFinal){ interim += r[0].transcript; continue; }
+      const t = r[0].transcript.trim();
+      if(!t) continue;
+      // Le micro entend aussi le haut-parleur : si ARIA est en train de
+      // parler, ce qu'on capte est sa propre voix, pas la tienne.
+      if(window.speechSynthesis && speechSynthesis.speaking){ sayIn.value=''; continue; }
+      micStrikes = 0;                   // elle t'a entendu, le compteur repart
+      sayIn.value = t; send();
     }
-    // On écrit dans le champ au fil de l'eau : tu vois ce qu'elle comprend.
-    sayIn.value = (finalText + interim).trim();
+    if(interim) sayIn.value = interim.trim();
   };
+
   rec.onerror = ev=>{
-    setMic(false);
-    const why = ev.error === 'not-allowed' ? 'autorisation micro refusée'
-              : ev.error === 'no-speech'   ? 'rien entendu'
-              : ev.error;
-    log('etat', 'micro : ' + why);
+    if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){
+      stopMic('autorisation refusée'); return;
+    }
+    if(ev.error === 'network'){
+      stopMic("ce navigateur n'a pas accès au service de transcription"); return;
+    }
+    if(ev.error !== 'no-speech' && ev.error !== 'aborted') log('etat', 'micro : ' + ev.error);
   };
+
   rec.onend = ()=>{
-    setMic(false);
-    if(finalText.trim()){ sayIn.value = finalText.trim(); send(); }
+    if(!micWanted){ setMic(false); return; }
+    // Chrome ferme la session tout seul après un silence, même en continuous :
+    // on relance tant que tu n'as pas cliqué pour arrêter.
+    //
+    // Le garde-fou ne compte PAS les relances : après un long silence elles
+    // sont normales, et les compter coupait le micro d'un utilisateur qui se
+    // tait simplement. On mesure la durée de vie de la session. Une session
+    // qui meurt en moins d'une seconde n'a pas écouté : trois de suite et on
+    // arrête, c'est que le navigateur refuse.
+    if(Date.now() - micStarted < 1000) micStrikes++;
+    else micStrikes = 0;
+    if(micStrikes >= 3){ stopMic('le navigateur ferme le micro aussitôt'); return; }
+    setTimeout(()=>{ if(!micWanted) return;
+      try{ micStarted = Date.now(); rec.start(); }
+      catch(e){ stopMic('relance impossible'); } }, 250);
   };
-  try{ rec.start(); setMic(true); log('etat', 'micro ouvert, parle-lui'); }
-  catch(e){ setMic(false); log('etat', 'micro indisponible'); }
+
+  try{ micStarted = Date.now(); rec.start(); }
+  catch(e){ stopMic('démarrage impossible'); }
+}
+
+function toggleMic(){
+  if(!SR){ log('etat', "ce navigateur ne sait pas écouter, essaie Chrome ou Edge"); return; }
+  if(micWanted){ stopMic(null); log('etat', 'micro fermé'); return; }
+  micWanted = true; micStrikes = 0;
+  setMic(true);
+  log('etat', 'micro ouvert, parle quand tu veux');
+  startRec();
 }
 if(micBtn) micBtn.addEventListener('click', toggleMic);
 

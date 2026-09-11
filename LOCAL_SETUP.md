@@ -173,8 +173,22 @@ installées sur Windows, donc rien ne sort de ton PC. Si elle parle avec un
 accent anglais, c'est qu'aucune voix française n'est installée : Paramètres ->
 Heure et langue -> Voix -> ajouter des voix -> Français.
 
-**Micro** ouvre l'écoute le temps d'une phrase, puis envoie automatiquement ce
-que tu as dit. Pas d'écoute permanente : il faut cliquer à chaque fois.
+**Micro** ouvre l'écoute et **la garde ouverte**. Tu parles, chaque phrase
+terminée part toute seule, et tu peux enchaîner sans rien retoucher. Un second
+clic ferme le micro.
+
+Le navigateur ferme sa session d'écoute tout seul après un silence : on la
+relance à chaque fois. Si elle meurt trois fois de suite en moins d'une
+seconde, c'est que le navigateur refuse pour de bon, et là on arrête en le
+disant.
+
+Quand ARIA parle à voix haute, ce que le micro capte est sa propre voix : ces
+phrases-là sont ignorées, sinon elle se répondrait à elle-même en boucle.
+
+**Le micro ne marche que dans Chrome ou Edge.** Opera, Brave et Vivaldi sont
+pourtant des dérivés de Chromium, mais la reconnaissance vocale n'est pas du
+code local : c'est un service Google auquel ces navigateurs n'ont pas accès.
+L'API existe, elle démarre, et elle échoue aussitôt.
 
 Un point d'honnêteté sur le micro : la reconnaissance vocale utilisée est
 celle du navigateur, et sur les navigateurs basés sur Chromium (Chrome, Edge,
