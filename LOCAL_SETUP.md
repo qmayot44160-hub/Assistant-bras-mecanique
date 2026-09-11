@@ -41,18 +41,19 @@ Une fois que ça marche, tu n'as plus besoin de la fenêtre noire.
 Double-clique **`Creer-raccourci.bat`**, une seule fois. Il pose un raccourci
 **ARIA** sur ton Bureau, avec son icône.
 
-Ce raccourci lance `ARIA.vbs`, qui fait tourner le même script mais **sans
-aucune fenêtre** : il attend que le serveur réponde, puis ouvre la page tout
-seul. Tu cliques, ARIA s'ouvre. C'est tout.
+Le raccourci démarre ARIA **fenêtre réduite** : elle part directement dans la
+barre des tâches, tu ne l'as plus sous les yeux, et la page s'ouvre toute
+seule au bout de 30 à 60 secondes.
 
-Comme il n'y a plus de fenêtre, il n'y a plus de Ctrl+C non plus : un bouton
-**⏻ Éteindre** est apparu dans la barre d'actions pour l'arrêter proprement.
-Il n'est visible que sur le PC qui l'héberge, et le serveur refuse
-l'extinction demandée depuis un autre appareil : pas de risque de la couper
-d'un doigt qui glisse depuis le téléphone.
+Pourquoi réduite et pas invisible : un lancement totalement caché qui échoue
+ne peut rien te dire. Réduite, elle ne gêne pas, et si un jour ça coince tu
+cliques dessus dans la barre des tâches et tu vois l'erreur.
 
-Si la page ne s'ouvre pas, la sortie du démarrage est écrite dans
-`demarrage.log`, à côté d'ARIA.
+Pour l'arrêter, deux façons : Ctrl+C dans la fenêtre, ou le bouton
+**⏻ Éteindre** dans la barre d'actions de la page. Ce bouton n'apparaît que
+sur le PC qui héberge ARIA, et le serveur refuse l'extinction demandée depuis
+un autre appareil : pas de risque de la couper d'un doigt qui glisse depuis le
+téléphone.
 
 **La toute première réponse peut prendre une minute** : le modèle se charge
 dans la VRAM. Le script le précharge au démarrage, donc si tu attends que la
