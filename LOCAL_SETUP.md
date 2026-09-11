@@ -168,10 +168,33 @@ sans allumer le PC. Pour l'ARIA complète, c'est ton PC ou rien.
 
 Deux boutons dans la barre d'actions.
 
-**Sa voix** fait lire ses réponses à haute voix. Ça passe par les voix
-installées sur Windows, donc rien ne sort de ton PC. Si elle parle avec un
-accent anglais, c'est qu'aucune voix française n'est installée : Paramètres ->
-Heure et langue -> Voix -> ajouter des voix -> Français.
+**Sa voix** fait lire ses réponses à haute voix. Deux moteurs possibles,
+tous les deux locaux.
+
+Par défaut elle utilise les voix installées sur Windows. Ça marche sans rien
+installer, mais ça sonne comme un GPS de 2009. Si elle parle avec un accent
+anglais, c'est qu'aucune voix française n'est présente : Paramètres -> Heure et
+langue -> Voix -> ajouter des voix -> Français.
+
+Pour une vraie voix, lance **`Installer-la-voix.bat`** une fois. Il installe
+Piper, un moteur de synthèse neuronal, et télécharge une voix française
+(~250 Mo de moteur, ~65 Mo de voix). Ensuite ARIA parle avec, et le journal
+affiche `voix activée (Piper, synthèse locale)` au lieu de `(navigateur)`.
+
+Piper tourne sur le processeur, pas sur la carte graphique : il n'entre pas en
+concurrence avec le cerveau pour la VRAM. Si le moteur ou la voix disparaît,
+la page retombe toute seule sur la voix du navigateur en le disant.
+
+Pour changer de voix, avant de relancer l'installateur :
+
+```
+set PIPER_VOICE=fr_FR-tom-medium
+Installer-la-voix.bat
+```
+
+`fr_FR-siwis-medium` (défaut, féminine), `fr_FR-tom-medium` (masculine) et
+`fr_FR-upmc-medium` sont les plus propres. `PIPER_SPEED` règle le débit :
+au-dessus de 1 elle ralentit, en dessous elle accélère.
 
 **Micro** ouvre l'écoute et **la garde ouverte**. Tu parles, chaque phrase
 terminée part toute seule, et tu peux enchaîner sans rien retoucher. Un second

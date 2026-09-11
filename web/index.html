@@ -1242,7 +1242,33 @@ if(quitBtn && ['127.0.0.1','localhost','::1'].includes(location.hostname)){
    l'audio part chez l'éditeur pour être transcrit : c'est le seul morceau
    d'ARIA qui n'est pas local. D'où un bouton, et jamais d'écoute permanente.
    Le jour où on branche Whisper sur le serveur, ce bout devient local aussi. */
-const VOICE = { on:false, voice:null, rate:1.05, pitch:1.15 };
+const VOICE = { on:false, voice:null, rate:1.05, pitch:1.15,
+                serveur:null, audio:null, parle:false };
+
+// ARIA parle-t-elle en ce moment ? Sert au micro : ce qu'il capte pendant
+// qu'elle parle est sa propre voix. Les deux moteurs doivent compter.
+function ariaParle(){
+  return VOICE.parle || !!(window.speechSynthesis && speechSynthesis.speaking);
+}
+
+function tairela(){
+  VOICE.parle = false;
+  try{ if(VOICE.audio){ VOICE.audio.pause(); VOICE.audio = null; } }catch(e){}
+  try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+}
+
+// Piper est-il prêt côté serveur ? On ne demande qu'une fois, à l'allumage
+// de la voix : inutile d'interroger /health au chargement de la page.
+async function sonderVoix(){
+  if(VOICE.serveur !== null) return VOICE.serveur;
+  VOICE.serveur = false;
+  try{
+    const r = await fetch('/health');
+    const j = await r.json();
+    VOICE.serveur = !!(j && j.voice && j.voice.ready);
+  }catch(e){}
+  return VOICE.serveur;
+}
 
 function pickVoice(){
   let vs = [];
@@ -1257,28 +1283,49 @@ if(window.speechSynthesis){
   speechSynthesis.addEventListener('voiceschanged', pickVoice);
 }
 
-function speak(text){
-  if(!VOICE.on || !text || !window.speechSynthesis) return;
+function voixNavigateur(text){
+  if(!window.speechSynthesis) return;
   try{
-    speechSynthesis.cancel();          // elle ne se coupe pas la parole
     const u = new SpeechSynthesisUtterance(text);
     if(VOICE.voice) u.voice = VOICE.voice;
     u.lang = 'fr-FR'; u.rate = VOICE.rate; u.pitch = VOICE.pitch;
+    u.onend = ()=>{ VOICE.parle = false; };
+    VOICE.parle = true;
     speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ VOICE.parle = false; }
+}
+
+function speak(text){
+  if(!VOICE.on || !text) return;
+  tairela();                            // elle ne se coupe pas la parole
+  if(!VOICE.serveur){ voixNavigateur(text); return; }
+
+  const a = new Audio('/api/tts?text=' + encodeURIComponent(text));
+  VOICE.audio = a; VOICE.parle = true;
+  a.onended = ()=>{ VOICE.parle = false; };
+  // 503 : la voix Piper a disparu en cours de route. On bascule pour de bon
+  // sur celle du navigateur plutôt que de rester muette.
+  const repli = ()=>{
+    if(VOICE.audio !== a) return;       // une autre phrase a pris la main
+    VOICE.serveur = false; VOICE.parle = false;
+    log('etat', 'voix Piper indisponible -> voix du navigateur');
+    voixNavigateur(text);
+  };
+  a.onerror = repli;
+  a.play().catch(repli);
 }
 
 const voiceBtn = document.getElementById('voiceBtn');
 if(voiceBtn){
-  if(!window.speechSynthesis){
-    voiceBtn.disabled = true; voiceBtn.title = "Ce navigateur ne sait pas parler";
-  }
-  voiceBtn.addEventListener('click', ()=>{
+  // Plus de désactivation si speechSynthesis manque : Piper prend le relais.
+  voiceBtn.addEventListener('click', async ()=>{
     VOICE.on = !VOICE.on;
     voiceBtn.classList.toggle('active', VOICE.on);
-    if(!VOICE.on){ try{ speechSynthesis.cancel(); }catch(e){} }
-    log('etat', VOICE.on ? 'voix activée'+(VOICE.voice?' ('+VOICE.voice.name+')':'') : 'voix coupée');
-    if(VOICE.on) speak('Je suis là.');
+    if(!VOICE.on){ tairela(); log('etat', 'voix coupée'); return; }
+    const piper = await sonderVoix();
+    log('etat', 'voix activée (' + (piper ? 'Piper, synthèse locale'
+         : (VOICE.voice ? VOICE.voice.name : 'navigateur')) + ')');
+    speak('Je suis là.');
   });
 }
 
@@ -1317,7 +1364,7 @@ function startRec(){
       if(!t) continue;
       // Le micro entend aussi le haut-parleur : si ARIA est en train de
       // parler, ce qu'on capte est sa propre voix, pas la tienne.
-      if(window.speechSynthesis && speechSynthesis.speaking){ sayIn.value=''; continue; }
+      if(ariaParle()){ sayIn.value=''; continue; }
       micStrikes = 0;                   // elle t'a entendu, le compteur repart
       sayIn.value = t; send();
     }

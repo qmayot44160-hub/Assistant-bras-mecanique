@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, PlainTextResponse, Response
 
 # Le corps 3D vit dans web/index.html, à la racine du repo (un niveau au-dessus).
 WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
@@ -31,6 +31,7 @@ try:
     import local_brain
     import memory
     import guard
+    import voice
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
@@ -39,6 +40,7 @@ except ImportError:
     from brain import local_brain
     from brain import memory
     from brain import guard
+    from brain import voice
 
 # Choix du cerveau : local (modèle sur le serveur) | claude (API) | scripted (règles)
 BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
@@ -141,6 +143,7 @@ hub = Hub()
 async def _start_loop() -> None:
     if BRAIN_MODE == "local":
         local_brain.start_loading()   # charge le modèle en tâche de fond
+    voice.start_loading()             # et la voix, si elle est installée
 
     async def life() -> None:
         dt = 1.0 / TICK_HZ
@@ -186,7 +189,22 @@ async def api_shutdown(request: Request) -> dict:
 async def health() -> dict:
     return {"ok": True, "state": brain.state, "awake": brain.awake,
             "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available(), "claude_error": ai_layer.last_error(),
-            "memory": memory.stats()}
+            "memory": memory.stats(), "voice": voice.status()}
+
+
+@app.get("/api/tts")
+async def api_tts(text: str = "") -> Response:
+    """Synthétise une phrase avec Piper. 503 si la voix n'est pas installée :
+    la page retombe alors sur celle du navigateur."""
+    if not voice.available():
+        raise HTTPException(503, voice.status().get("error") or "voix indisponible")
+    data = await asyncio.to_thread(voice.synth, text)
+    if not data:
+        raise HTTPException(503, "synthèse vide")
+    # Même phrase, même audio : le cache évite de resynthétiser les répliques
+    # récurrentes (« Je suis là. », les salutations...).
+    return Response(content=data, media_type="audio/wav",
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 def _dire_outil(act: dict) -> str:
