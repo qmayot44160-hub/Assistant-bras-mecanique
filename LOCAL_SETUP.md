@@ -185,16 +185,43 @@ Piper tourne sur le processeur, pas sur la carte graphique : il n'entre pas en
 concurrence avec le cerveau pour la VRAM. Si le moteur ou la voix disparaît,
 la page retombe toute seule sur la voix du navigateur en le disant.
 
-Pour changer de voix, avant de relancer l'installateur :
+### Choisir sa voix
+
+Le catalogue est en ligne et évolue. **`Voix-disponibles.bat`** te liste les
+voix françaises réellement téléchargeables, plutôt qu'une liste recopiée qui
+vieillirait mal.
+
+Pour en essayer une :
 
 ```
-set PIPER_VOICE=fr_FR-tom-medium
+set PIPER_VOICE=fr_FR-upmc-medium
 Installer-la-voix.bat
 ```
 
-`fr_FR-siwis-medium` (défaut, féminine), `fr_FR-tom-medium` (masculine) et
-`fr_FR-upmc-medium` sont les plus propres. `PIPER_SPEED` règle le débit :
-au-dessus de 1 elle ralentit, en dessous elle accélère.
+La voix par défaut, `fr_FR-siwis-medium`, est déjà féminine. `fr_FR-upmc-medium`
+est un modèle à deux locuteurs, dont une autre voix féminine : `PIPER_SPEAKER=0`
+la sélectionne.
+
+### Régler le timbre
+
+Trois variables, à définir avant de lancer ARIA :
+
+| Variable | Effet |
+|---|---|
+| `PIPER_SPEAKER` | numéro du locuteur dans les modèles multi-voix (0 par défaut) |
+| `PIPER_SPEED` | débit. Au-dessus de 1 elle ralentit, en dessous elle accélère |
+| `PIPER_PITCH` | hauteur. `1.15` plus aigu, `0.9` plus grave, borné entre 0,7 et 1,6 |
+
+Piper ne règle pas la hauteur lui-même. On l'obtient en rejouant l'audio plus
+vite, ce qui monte toutes les fréquences, et en lui faisant articuler d'autant
+plus lentement pour compenser : le timbre monte, le débit ne bouge pas.
+
+Pour une ARIA nettement plus féminine :
+
+```
+set PIPER_PITCH=1.15
+run_local.bat
+```
 
 **Micro** ouvre l'écoute et **la garde ouverte**. Tu parles, chaque phrase
 terminée part toute seule, et tu peux enchaîner sans rien retoucher. Un second

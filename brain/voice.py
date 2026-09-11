@@ -12,6 +12,8 @@ n'est envoyé nulle part.
 Réglages :
   PIPER_VOICE   nom de la voix (défaut fr_FR-siwis-medium)
   PIPER_SPEED   1.0 = normal, >1 plus lent (c'est `length_scale` chez Piper)
+  PIPER_SPEAKER numéro de voix dans les modèles multi-locuteurs (upmc : 0 = Jessica)
+  PIPER_PITCH   1.0 = timbre d'origine, 1.15 = plus aigu, 0.9 = plus grave
 
 Si `piper-tts` n'est pas installé ou si la voix n'est pas téléchargée, ce
 module se déclare simplement indisponible : le serveur répond 503 et la page
@@ -37,6 +39,16 @@ try:
     SPEED = float(os.environ.get("PIPER_SPEED", "1.0"))
 except ValueError:
     SPEED = 1.0
+try:
+    SPEAKER = int(os.environ.get("PIPER_SPEAKER", "0"))
+except ValueError:
+    SPEAKER = 0
+try:
+    PITCH = float(os.environ.get("PIPER_PITCH", "1.0"))
+except ValueError:
+    PITCH = 1.0
+PITCH = min(1.6, max(0.7, PITCH))     # au-delà ça devient un dessin animé
+
 VOICE_DIR = DATA_DIR / "voices"
 MAX_CHARS = 400          # une réplique d'ARIA est courte ; au-delà c'est suspect
 
@@ -47,6 +59,7 @@ _lock = threading.Lock()
 def status() -> dict:
     return {"ready": _state["ready"], "loading": _state["loading"],
             "error": _state["error"], "voice": VOICE_NAME,
+            "speaker": SPEAKER, "pitch": PITCH, "speed": SPEED,
             "dir": str(VOICE_DIR)}
 
 
@@ -106,7 +119,10 @@ def synth(text: str) -> bytes:
     buf = io.BytesIO()
     try:
         from piper import SynthesisConfig
-        cfg = SynthesisConfig(length_scale=SPEED) if SPEED != 1.0 else None
+        # Piper ne règle pas la hauteur. On l'obtient en rejouant l'audio plus
+        # vite (tout monte d'autant), et on compense en le faisant parler
+        # d'autant plus lentement : le timbre monte, le débit ne bouge pas.
+        cfg = SynthesisConfig(length_scale=SPEED * PITCH, speaker_id=SPEAKER)
         with _lock:
             with wave.open(buf, "wb") as wav:
                 _state["engine"].synthesize_wav(text, wav, syn_config=cfg)
@@ -114,4 +130,25 @@ def synth(text: str) -> bytes:
         _state["error"] = "synthèse échouée (%s)" % type(e).__name__
         print("voice:", _state["error"], e)
         return b""
-    return buf.getvalue()
+    data = buf.getvalue()
+    return _retendre(data, PITCH) if PITCH != 1.0 else data
+
+
+def _retendre(wav_bytes: bytes, facteur: float) -> bytes:
+    """Réécrit l'entête WAV avec une fréquence d'échantillonnage multipliée.
+
+    Les échantillons ne changent pas : c'est la vitesse de lecture qui change,
+    donc toutes les fréquences de la voix montent du même facteur.
+    """
+    try:
+        src = wave.open(io.BytesIO(wav_bytes), "rb")
+        frames = src.readframes(src.getnframes())
+        out = io.BytesIO()
+        with wave.open(out, "wb") as dst:
+            dst.setnchannels(src.getnchannels())
+            dst.setsampwidth(src.getsampwidth())
+            dst.setframerate(int(src.getframerate() * facteur))
+            dst.writeframes(frames)
+        return out.getvalue()
+    except Exception:
+        return wav_bytes                # au pire, le timbre d'origine
