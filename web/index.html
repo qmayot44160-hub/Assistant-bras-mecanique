@@ -762,7 +762,10 @@ async function loadURDF(){
     const mesh = l.querySelector('visual > geometry > mesh');
     if(!mesh || name === 'base_link') return;   // la planche de montage : notre socle fait déjà le travail
     let file = mesh.getAttribute('filename');
-    if(urdfHiRes) file = file.replace('_col.STL', '.STL');   // version détaillée
+    // _clean = mesh détaillé dont on a retiré la visserie modélisée en corps
+    // libres : dans l'export CAO, chaque link porte ses vis, qui traversent la
+    // pièce voisine et se retrouvent donc à flotter dans le vide.
+    if(urdfHiRes) file = file.replace('_col.STL', '_clean.STL');
     const vo = l.querySelector('visual > origin');
     const xyz = numList(vo && vo.getAttribute('xyz'), [0,0,0]);
     const rpy = numList(vo && vo.getAttribute('rpy'), [0,0,0]);
