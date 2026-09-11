@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, PlainTextResponse
 
 # Le corps 3D vit dans web/index.html, à la racine du repo (un niveau au-dessus).
 WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
@@ -30,6 +30,7 @@ try:
     import ai_layer
     import local_brain
     import memory
+    import guard
 except ImportError:
     # lancé depuis la racine du repo  (uvicorn brain.main:app, cf. Railway)
     from brain.brain import Brain
@@ -37,11 +38,47 @@ except ImportError:
     from brain import ai_layer
     from brain import local_brain
     from brain import memory
+    from brain import guard
 
 # Choix du cerveau : local (modèle sur le serveur) | claude (API) | scripted (règles)
 BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
 
 app = FastAPI(title="Cerveau ARIA")
+
+# --- Serrure ---------------------------------------------------------------
+# Sans ARIA_PASSWORD, rien ne change : usage local, aucune gêne. Avec, tout
+# passe par le cookie signé, y compris les fichiers statiques et le WebSocket.
+@app.middleware("http")
+async def _guard(request, call_next):
+    if not guard.enabled() or request.url.path in guard.OPEN_PATHS:
+        return await call_next(request)
+    if guard.valid_token(request.cookies.get(guard.COOKIE)):
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return PlainTextResponse("non authentifié", status_code=401)
+    return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(bad: int = 0) -> str:
+    if not guard.enabled():
+        return HTMLResponse(status_code=303, headers={"Location": "/"}, content="")
+    return guard.login_page(error=bool(bad))
+
+
+@app.post("/api/login")
+async def login_submit(password: str = Form("")):
+    if not guard.enabled():
+        return RedirectResponse("/", status_code=303)
+    if not guard.check_password(password):
+        # Ralentit les essais en série sans bloquer le reste du serveur.
+        await asyncio.sleep(1.0)
+        return RedirectResponse("/login?bad=1", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
+    resp.set_cookie(guard.COOKIE, guard.make_token(), max_age=guard.MAX_AGE,
+                    httponly=True, samesite="lax")
+    return resp
+
 
 # Les meshes haute définition pèsent ~48 Mo bruts mais se compressent de 60 %.
 # Le navigateur décompresse tout seul : même détail, transfert deux fois et
@@ -277,6 +314,11 @@ async def api_memory_clear() -> dict:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    # Un middleware HTTP ne voit pas les WebSockets : sans ce test, le canal
+    # temps réel resterait grand ouvert alors que le reste est fermé.
+    if guard.enabled() and not guard.valid_token(ws.cookies.get(guard.COOKIE)):
+        await ws.close(code=1008)
+        return
     await hub.join(ws)
     # état initial pour le nouvel arrivant
     await ws.send_text(json.dumps(brain.snapshot()))

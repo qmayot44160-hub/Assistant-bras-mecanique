@@ -88,6 +88,61 @@ Le serveur choisit son cerveau via `BRAIN_MODE` : `local` (Ollama, défaut du
 script), `claude` (API, nécessite `ANTHROPIC_API_KEY`), `scripted` (règles).
 Si Ollama n'est pas lancé, ARIA retombe tout seul sur les règles.
 
+## Y accéder depuis ton téléphone, et depuis dehors
+
+Par défaut ARIA n'écoute que ce PC (`127.0.0.1`). C'est volontaire : ses
+routes lisent sa mémoire, l'effacent, et acceptent des fichiers. Rien de tout
+ça ne doit traîner sur un réseau sans serrure.
+
+### La serrure
+
+Définis `ARIA_PASSWORD` et tout passe par une page de connexion : les pages,
+l'API, les fichiers 3D et le WebSocket. Le cookie est signé en HMAC-SHA256
+avec une clé tirée au hasard, gardée dans `data/.session-key`, et vaut
+30 jours. Sans mot de passe défini, rien ne change : l'usage local reste sans
+friction.
+
+`run_reseau.bat` te le demande au lancement et **refuse de démarrer si tu le
+laisses vide**.
+
+### Chez toi, sur ton wifi
+
+Double-clique **`run_reseau.bat`**. Il affiche l'adresse à taper sur ton
+téléphone, du genre `http://192.168.1.24:8000`. Le téléphone doit être sur le
+même wifi. Windows demandera peut-être d'autoriser Python sur le réseau privé.
+
+### Depuis dehors : Tailscale (recommandé)
+
+C'est un réseau privé entre tes propres appareils. Rien n'est publié sur
+internet, donc rien à se faire trouver par un robot d'exploration.
+
+1. Installe Tailscale sur le PC et sur le téléphone : https://tailscale.com/download
+2. Connecte les deux avec le même compte (gratuit pour un usage perso).
+3. Lance `run_reseau.bat` sur le PC.
+4. Sur le téléphone, ouvre `http://<nom-du-PC>:8000`, le nom que Tailscale
+   affiche dans sa liste d'appareils.
+
+Ça marche depuis n'importe où, en 4G comme en wifi. Le PC doit être allumé.
+
+### Depuis dehors : Cloudflare Tunnel (URL publique)
+
+Si tu veux une vraie adresse web, partageable :
+
+```
+cloudflared tunnel --url http://localhost:8000
+```
+
+Il te rend une URL en `trycloudflare.com`. Pas de redirection de port, pas
+d'IP fixe. Mais c'est **public** : n'importe qui avec l'URL tombe sur ta page
+de connexion, donc le mot de passe devient ta seule défense. Prends-en un
+vrai. L'URL gratuite change à chaque lancement.
+
+### Ce que Railway devient
+
+Railway n'a pas de GPU, donc pas de cerveau local : son ARIA retombe sur ses
+réflexes scriptés. Il reste utile comme vitrine, pour montrer l'atelier 3D
+sans allumer le PC. Pour l'ARIA complète, c'est ton PC ou rien.
+
 ## Lui parler à la voix
 
 Deux boutons dans la barre d'actions.

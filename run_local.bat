@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title ARIA - cerveau local
 
@@ -7,6 +7,23 @@ rem Modele par defaut. Pour en changer sans editer ce fichier, dans un cmd :
 rem   set OLLAMA_MODEL=qwen2.5:3b  puis  run_local.bat
 if "%OLLAMA_MODEL%"=="" set OLLAMA_MODEL=qwen2.5:7b
 set BRAIN_MODE=local
+
+rem Par defaut ARIA n'ecoute que ce PC. run_reseau.bat met 0.0.0.0 pour
+rem l'ouvrir au telephone et aux tunnels.
+if "%ARIA_HOST%"=="" set ARIA_HOST=127.0.0.1
+
+rem Garde-fou : les routes d'ARIA lisent sa memoire, l'effacent et acceptent
+rem des fichiers. Ouvrir ca sans mot de passe serait une porte grande ouverte.
+if not "%ARIA_HOST%"=="127.0.0.1" if "%ARIA_PASSWORD%"=="" (
+  echo [X] Refus d'ouvrir ARIA sur le reseau sans mot de passe.
+  echo.
+  echo     N'importe qui sur le reseau pourrait lire sa memoire, l'effacer,
+  echo     et deposer des fichiers sur ce PC.
+  echo.
+  echo     Lance run_reseau.bat, ou definis ARIA_PASSWORD toi-meme.
+  pause
+  exit /b 1
+)
 
 rem --- Le dossier est-il inscriptible ? -----------------------------------
 rem Dezippe sur un disque protege, rien ne pourra s'y ecrire : ni la memoire
@@ -109,6 +126,11 @@ rem --- 4/4 : serveur ------------------------------------------------------
 echo [4/4] Demarrage du serveur ARIA...
 echo.
 echo   Navigateur    :  http://127.0.0.1:8000
+if not "%ARIA_HOST%"=="127.0.0.1" (
+  for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do set LANIP=%%a
+  echo   Depuis le tel :  http://!LANIP: =!:8000
+  echo   Mot de passe  :  demande a la connexion
+)
 echo   Memoire       :  %DATA_DIR%
 echo   Pour arreter  :  Ctrl+C dans cette fenetre
 echo.
@@ -119,7 +141,7 @@ echo.
 rem Ouvre la page tout seul une fois le serveur debout.
 start "" /min cmd /c "timeout /t 6 /nobreak >nul & start "" http://127.0.0.1:8000"
 
-%PY% -m uvicorn brain.main:app --host 127.0.0.1 --port 8000
+%PY% -m uvicorn brain.main:app --host %ARIA_HOST% --port 8000
 pause
 exit /b 0
 
