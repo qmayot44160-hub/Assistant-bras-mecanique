@@ -124,6 +124,15 @@ def main() -> int:
     try:
         zf = _download()
         deferred = _apply(zf)
+    except PermissionError:
+        # Cas classique : l'app a ete dezippee sur un disque ou un dossier
+        # protege en ecriture. Rien ne pourra jamais s'y ecrire, ni la mise a
+        # jour, ni la memoire d'ARIA.
+        print("      ECRITURE REFUSEE dans %s" % ROOT)
+        print("      Ce dossier est protege. Deplace ARIA ailleurs, par")
+        print("      exemple dans %s, et relance." % os.path.join(
+            os.path.expanduser("~"), "ARIA"))
+        return 0
     except Exception as e:
         print("      mise a jour echouee (%s), on garde la version locale."
               % type(e).__name__)

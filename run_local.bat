@@ -8,6 +8,24 @@ rem   set OLLAMA_MODEL=qwen2.5:3b  puis  run_local.bat
 if "%OLLAMA_MODEL%"=="" set OLLAMA_MODEL=qwen2.5:7b
 set BRAIN_MODE=local
 
+rem --- Le dossier est-il inscriptible ? -----------------------------------
+rem Dezippe sur un disque protege, rien ne pourra s'y ecrire : ni la memoire
+rem d'ARIA, ni les mises a jour. Autant le dire ici plutot que de laisser
+rem Python exploser vingt lignes plus loin.
+echo.> "%~dp0.wtest" 2>nul
+if not exist "%~dp0.wtest" (
+  echo [X] Ecriture refusee dans ce dossier :
+  echo     %~dp0
+  echo.
+  echo     Copie ARIA sur ton disque systeme, puis relance de la-bas :
+  echo       xcopy /e /i /y "%~dp0." "%USERPROFILE%\ARIA"
+  echo       cd /d "%USERPROFILE%\ARIA"
+  echo       run_local.bat
+  pause
+  exit /b 1
+)
+del "%~dp0.wtest" >nul 2>nul
+
 rem Memoire + catalogue d'ARIA, ranges a cote de l'app (et pas dans C:\data).
 if "%DATA_DIR%"=="" set DATA_DIR=%~dp0data
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
