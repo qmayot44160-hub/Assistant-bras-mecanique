@@ -12,21 +12,62 @@ l'app. Les liens AliExpress/Amazon sont dans le BOM du projet (non recopiés).
 from __future__ import annotations
 import json
 import os
+import tempfile
 from pathlib import Path
 
 
-def _resolve_data_dir() -> Path:
-    candidate = Path(os.environ.get("DATA_DIR", "/data"))
+def _writable(path: Path) -> bool:
+    """Créer le dossier ne suffit pas : sur un disque protégé, mkdir peut
+    passer et l'écriture échouer. On écrit vraiment un fichier témoin."""
     try:
-        candidate.mkdir(parents=True, exist_ok=True)
-        probe = candidate / ".wtest"
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".wtest"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
-        return candidate
+        return True
     except Exception:
-        local = Path(__file__).resolve().parent.parent / "data"
-        local.mkdir(parents=True, exist_ok=True)
-        return local
+        return False
+
+
+def _candidates():
+    """Du plus voulu au plus sûr. Le dernier marche toujours."""
+    env = os.environ.get("DATA_DIR")
+    yield Path(env) if env else Path("/data")               # volume Railway
+    yield Path(__file__).resolve().parent.parent / "data"   # à côté de l'app
+    # Sur un disque externe ou un dossier protégé, les deux précédents sont
+    # refusés (WinError 5 sous Windows). Le profil utilisateur, lui, est
+    # toujours à nous.
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME")
+    if base:
+        yield Path(base) / "ARIA"
+    yield Path.home() / ".aria"
+    yield Path(tempfile.gettempdir()) / "aria-data"
+
+
+def _resolve_data_dir() -> Path:
+    """Ne lève jamais tant qu'un emplacement est inscriptible.
+
+    L'ancienne version retombait sur `<app>/data`, exactement le dossier que
+    run_local.bat passe déjà dans DATA_DIR : quand celui-ci était refusé, le
+    repli l'était aussi et ARIA refusait de démarrer.
+    """
+    seen: set[str] = set()
+    refused: list[str] = []
+    for cand in _candidates():
+        try:
+            key = str(cand.resolve())
+        except Exception:
+            key = str(cand)
+        if key in seen:
+            continue
+        seen.add(key)
+        if _writable(cand):
+            if refused:
+                print("catalog: ecriture refusee dans %s" % refused[0])
+                print("catalog: memoire et catalogue ranges dans %s" % cand)
+            return cand
+        refused.append(key)
+    raise RuntimeError("aucun dossier inscriptible, essayes : " + ", ".join(refused))
 
 
 DATA_DIR = _resolve_data_dir()
