@@ -430,6 +430,8 @@
     <button class="act" id="freezeBtn" data-cmd="freeze"><span class="ic">❄</span>Figer</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
+    <button class="act" id="voiceBtn"><span class="ic">🗣</span>Sa voix</button>
+    <button class="act" id="micBtn"><span class="ic">🎙</span>Micro</button>
     <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
     <span class="aichip" id="aiChip">IA…</span>
     <div class="toggle">autonomie<div class="sw on" id="autoSw"><i></i></div></div>
@@ -1211,10 +1213,103 @@ function log(layer, msg){
   while(logEl.children.length>40) logEl.removeChild(logEl.lastChild);
 }
 
+/* ---------- Voix ----------
+   SA VOIX : speechSynthesis, rendue par les voix installées sur ta machine
+   (SAPI sous Windows). Rien ne sort du PC.
+
+   TA VOIX : l'API de reconnaissance du navigateur. Attention, sur Chromium
+   l'audio part chez l'éditeur pour être transcrit : c'est le seul morceau
+   d'ARIA qui n'est pas local. D'où un bouton, et jamais d'écoute permanente.
+   Le jour où on branche Whisper sur le serveur, ce bout devient local aussi. */
+const VOICE = { on:false, voice:null, rate:1.05, pitch:1.15 };
+
+function pickVoice(){
+  let vs = [];
+  try{ vs = speechSynthesis.getVoices() || []; }catch(e){ return; }
+  VOICE.voice = vs.find(v=>/^fr[-_]FR/i.test(v.lang))
+             || vs.find(v=>/^fr/i.test(v.lang)) || null;
+}
+if(window.speechSynthesis){
+  pickVoice();
+  // Sur Chromium la liste des voix arrive après coup : sans ça, on tomberait
+  // sur la voix anglaise par défaut.
+  speechSynthesis.addEventListener('voiceschanged', pickVoice);
+}
+
+function speak(text){
+  if(!VOICE.on || !text || !window.speechSynthesis) return;
+  try{
+    speechSynthesis.cancel();          // elle ne se coupe pas la parole
+    const u = new SpeechSynthesisUtterance(text);
+    if(VOICE.voice) u.voice = VOICE.voice;
+    u.lang = 'fr-FR'; u.rate = VOICE.rate; u.pitch = VOICE.pitch;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+const voiceBtn = document.getElementById('voiceBtn');
+if(voiceBtn){
+  if(!window.speechSynthesis){
+    voiceBtn.disabled = true; voiceBtn.title = "Ce navigateur ne sait pas parler";
+  }
+  voiceBtn.addEventListener('click', ()=>{
+    VOICE.on = !VOICE.on;
+    voiceBtn.classList.toggle('active', VOICE.on);
+    if(!VOICE.on){ try{ speechSynthesis.cancel(); }catch(e){} }
+    log('etat', VOICE.on ? 'voix activée'+(VOICE.voice?' ('+VOICE.voice.name+')':'') : 'voix coupée');
+    if(VOICE.on) speak('Je suis là.');
+  });
+}
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+const micBtn = document.getElementById('micBtn');
+
+function setMic(on){
+  listening = on;
+  if(!micBtn) return;
+  micBtn.classList.toggle('active', on);
+  micBtn.innerHTML = on ? '<span class="ic">⏹</span>J\'écoute'
+                        : '<span class="ic">🎙</span>Micro';
+}
+
+function toggleMic(){
+  if(!SR){ log('etat', "ce navigateur ne sait pas écouter, essaie Chrome ou Edge"); return; }
+  if(listening){ try{ rec.stop(); }catch(e){} return; }
+  rec = new SR();
+  rec.lang = 'fr-FR'; rec.interimResults = true; rec.continuous = false;
+  let finalText = '';
+  rec.onresult = ev=>{
+    let interim = '';
+    for(let i = ev.resultIndex; i < ev.results.length; i++){
+      const r = ev.results[i];
+      if(r.isFinal) finalText += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    // On écrit dans le champ au fil de l'eau : tu vois ce qu'elle comprend.
+    sayIn.value = (finalText + interim).trim();
+  };
+  rec.onerror = ev=>{
+    setMic(false);
+    const why = ev.error === 'not-allowed' ? 'autorisation micro refusée'
+              : ev.error === 'no-speech'   ? 'rien entendu'
+              : ev.error;
+    log('etat', 'micro : ' + why);
+  };
+  rec.onend = ()=>{
+    setMic(false);
+    if(finalText.trim()){ sayIn.value = finalText.trim(); send(); }
+  };
+  try{ rec.start(); setMic(true); log('etat', 'micro ouvert, parle-lui'); }
+  catch(e){ setMic(false); log('etat', 'micro indisponible'); }
+}
+if(micBtn) micBtn.addEventListener('click', toggleMic);
+
 /* Pensée affichée (petit effet machine à écrire) */
 const thoughtEl = document.getElementById('thought');
 let thoughtTimer = null;
 function think(text){
+  speak(text);                       // la voix part tout de suite, sans attendre
   if(thoughtTimer) clearInterval(thoughtTimer);
   let i=0; thoughtEl.innerHTML='<span class="cursor"></span>';
   thoughtTimer = setInterval(()=>{

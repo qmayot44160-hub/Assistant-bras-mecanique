@@ -88,6 +88,36 @@ Le serveur choisit son cerveau via `BRAIN_MODE` : `local` (Ollama, défaut du
 script), `claude` (API, nécessite `ANTHROPIC_API_KEY`), `scripted` (règles).
 Si Ollama n'est pas lancé, ARIA retombe tout seul sur les règles.
 
+## Lui parler à la voix
+
+Deux boutons dans la barre d'actions.
+
+**Sa voix** fait lire ses réponses à haute voix. Ça passe par les voix
+installées sur Windows, donc rien ne sort de ton PC. Si elle parle avec un
+accent anglais, c'est qu'aucune voix française n'est installée : Paramètres ->
+Heure et langue -> Voix -> ajouter des voix -> Français.
+
+**Micro** ouvre l'écoute le temps d'une phrase, puis envoie automatiquement ce
+que tu as dit. Pas d'écoute permanente : il faut cliquer à chaque fois.
+
+Un point d'honnêteté sur le micro : la reconnaissance vocale utilisée est
+celle du navigateur, et sur les navigateurs basés sur Chromium (Chrome, Edge,
+Opera) **l'audio est envoyé chez l'éditeur** pour être transcrit. C'est le
+seul morceau d'ARIA qui n'est pas local. Sa voix, son cerveau et sa mémoire,
+eux, ne quittent pas la machine. Le jour où on branche Whisper sur le serveur
+Python, ce bout redevient local lui aussi.
+
+## Sa mémoire ne s'efface plus
+
+Les échanges sont écrits dans `data/events.jsonl`, une ligne par phrase, en
+ajout seul. Elle ne jette plus rien et ça ne la ralentit pas : le coût
+d'écriture ne dépend pas de la taille du journal (0,01 ms, que le fichier
+fasse 40 Ko ou 40 Mo). Compte environ 90 octets par échange, soit 9 Mo pour
+100 000 phrases.
+
+Les faits et les notes restent dans `memory.json`, qui lui est petit et
+réécrit à chaque fois.
+
 ## Quand ARIA répond bêtement
 
 Ça veut presque toujours dire qu'elle est retombée sur ses réflexes scriptés,

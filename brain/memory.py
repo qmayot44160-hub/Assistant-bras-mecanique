@@ -6,9 +6,18 @@ Deux niveaux, comme chez nous :
   - les NOTES   : ce que tu lui demandes explicitement de retenir.
   - les ÉVÈNEMENTS : le fil des échanges récents, pour le contexte immédiat.
 
-Persisté dans DATA_DIR/memory.json (volume Railway), donc ça survit aux
-redéploiements. Le contexte est réinjecté dans le cerveau à chaque phrase,
-c'est ce qui fait qu'ARIA "se souvient".
+Deux fichiers, parce que les trois n'ont pas le même rythme :
+  - DATA_DIR/memory.json   faits + notes. Petit, réécrit en entier, sans souci.
+  - DATA_DIR/events.jsonl  le fil, une ligne JSON par échange, en AJOUT SEUL.
+
+Pourquoi séparer : avant, chaque message relisait et réécrivait tout le
+fichier. Mesuré : 1,8 ms à 400 échanges, mais 511 ms à 100 000 et 2,1 s à
+400 000. D'où un plafond de 400 qui faisait tout oublier à ARIA. En ajoutant
+une ligne au bout, le coût ne dépend plus de la taille : la mémoire peut
+grandir sans fin sans jamais ralentir.
+
+Le contexte est réinjecté dans le cerveau à chaque phrase, c'est ce qui fait
+qu'ARIA "se souvient".
 """
 
 from __future__ import annotations
@@ -22,13 +31,15 @@ try:
 except ImportError:
     from brain.catalog import DATA_DIR    # lancé depuis la racine
 
-MEMORY_FILE = DATA_DIR / "memory.json"
+MEMORY_FILE = DATA_DIR / "memory.json"      # faits + notes
+EVENTS_FILE = DATA_DIR / "events.jsonl"     # le fil, en ajout seul
 
-MAX_EVENTS = 400      # on garde le fil récent, pas toute l'histoire
-MAX_NOTES = 120
+MAX_NOTES = 5000      # une note pèse ~80 octets : de la place pour des années
 CONTEXT_EVENTS = 8    # nombre d'échanges réinjectés dans le prompt
+VIEW_EVENTS = 200     # ce qu'on renvoie au panneau Mémoire (pas tout le fil)
 
-_EMPTY = {"facts": {}, "notes": [], "events": []}
+_EMPTY = {"facts": {}, "notes": []}
+_count = None         # nombre d'échanges, compté une fois puis incrémenté
 
 
 def _read() -> dict:
@@ -36,9 +47,25 @@ def _read() -> dict:
         data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
         for k, v in _EMPTY.items():
             data.setdefault(k, type(v)())
+        _migrate(data)
         return data
     except Exception:
-        return {"facts": {}, "notes": [], "events": []}
+        return {"facts": {}, "notes": []}
+
+
+def _migrate(data: dict) -> None:
+    """Ancienne version : les échanges vivaient dans memory.json. On les
+    déverse une fois dans le journal, puis on retire la clé."""
+    old = data.pop("events", None)
+    if not old:
+        return
+    try:
+        with EVENTS_FILE.open("a", encoding="utf-8") as f:
+            for e in old:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        _write(data)
+    except Exception:
+        pass
 
 
 def _write(data: dict) -> None:
@@ -48,13 +75,64 @@ def _write(data: dict) -> None:
         pass
 
 
+def _tail(n: int) -> list[dict]:
+    """Les n dernières lignes du journal, sans relire tout le fichier :
+    on remonte depuis la fin par blocs jusqu'à en avoir assez."""
+    if n <= 0:
+        return []
+    try:
+        size = EVENTS_FILE.stat().st_size
+    except OSError:
+        return []
+    chunk, buf, pos = 64 * 1024, b"", size
+    try:
+        with EVENTS_FILE.open("rb") as f:
+            while pos > 0 and buf.count(b"\n") <= n:
+                step = min(chunk, pos)
+                pos -= step
+                f.seek(pos)
+                buf = f.read(step) + buf
+    except OSError:
+        return []
+    out = []
+    for line in buf.decode("utf-8", "replace").splitlines()[-n:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue                      # ligne tronquée (coupure de courant)
+    return out
+
+
+def count_events() -> int:
+    """Compté une seule fois au démarrage, puis tenu à jour à chaque ajout."""
+    global _count
+    if _count is None:
+        try:
+            with EVENTS_FILE.open("rb") as f:
+                _count = sum(1 for line in f if line.strip())
+        except OSError:
+            _count = 0
+    return _count
+
+
 def load() -> dict:
-    return _read()
+    data = _read()
+    data["events"] = _tail(VIEW_EVENTS)    # l'interface n'affiche pas 100 000 lignes
+    return data
 
 
 def clear() -> dict:
-    _write({"facts": {}, "notes": [], "events": []})
-    return _read()
+    global _count
+    _write({"facts": {}, "notes": []})
+    try:
+        EVENTS_FILE.unlink()
+    except OSError:
+        pass
+    _count = 0
+    return load()
 
 
 # --- Écriture -------------------------------------------------------------
@@ -99,13 +177,20 @@ def forget_note(index: int) -> bool:
 
 
 def add_event(role: str, text: str) -> None:
+    """Une ligne ajoutée au bout du journal. Coût constant quelle que soit la
+    taille du fil : c'est ce qui permet de ne plus rien jeter."""
+    global _count
     text = (text or "").strip()[:400]
     if not text:
         return
-    data = _read()
-    data["events"].append({"r": role, "t": text, "ts": time.time()})
-    data["events"] = data["events"][-MAX_EVENTS:]
-    _write(data)
+    try:
+        with EVENTS_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"r": role, "t": text, "ts": time.time()},
+                               ensure_ascii=False) + "\n")
+        if _count is not None:
+            _count += 1
+    except Exception:
+        pass
 
 
 # --- Extraction automatique de faits depuis une phrase --------------------
@@ -193,10 +278,10 @@ def context(max_events: int = CONTEXT_EVENTS) -> str:
         recent = [n["t"] for n in notes[-6:]]
         parts.append("À retenir : " + " ; ".join(recent))
 
-    events = data.get("events") or []
-    if events and max_events > 0:
+    events = _tail(max_events) if max_events > 0 else []
+    if events:
         lines = []
-        for e in events[-max_events:]:
+        for e in events:
             who = "lui" if e.get("r") == "user" else "toi"
             lines.append(f"{who}: {e.get('t','')}")
         parts.append("Échanges récents :\n" + "\n".join(lines))
@@ -209,6 +294,7 @@ def stats() -> dict:
     return {
         "facts": len(data.get("facts") or {}),
         "notes": len(data.get("notes") or []),
-        "events": len(data.get("events") or []),
+        "events": count_events(),
         "file": str(MEMORY_FILE),
+        "journal": str(EVENTS_FILE),
     }
