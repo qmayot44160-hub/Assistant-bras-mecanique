@@ -728,6 +728,9 @@ const URDF_PART = { base_link:'base', Link_1:'yaw', Link_2:'upper', Link_3:'elbo
                     Link_4:'forearm', Link_5:'wrist' };
 let urdfRoot=null, urdfJoints={}, urdfLinks={}, urdfOn=false, urdfLoading=false;
 let urdfEyeHost=null;
+// Positions de l'oeil dans le repère du bras stylisé. En mode URDF le repère du
+// poignet réel est tout autre (origine et orientation), d'où la sauvegarde.
+let eyeHome=null;
 // Haute définition = les vrais meshes (1 M de triangles, ~19 Mo compressés).
 // Allégé = les meshes de collision (6,6 Mo), utile si le téléphone rame.
 let urdfHiRes = true;
@@ -816,7 +819,18 @@ async function loadURDF(){
   urdfRoot.visible = false; root.add(urdfRoot);
 
   urdfEyeHost = new THREE.Group();                  // annule l'échelle du robot
-  if(urdfLinks['Link_5']) urdfLinks['Link_5'].add(urdfEyeHost);
+  const l5 = urdfLinks['Link_5'];
+  if(l5){
+    l5.add(urdfEyeHost);
+    // Direction moyenne des fixations de la pince : c'est là que "regarde" la main.
+    const dir = new THREE.Vector3(); let cnt = 0;
+    l5.children.forEach(c=>{ if(c !== urdfEyeHost && c.isObject3D && !c.isMesh){ dir.add(c.position); cnt++; } });
+    if(cnt) dir.divideScalar(cnt); else dir.set(-1, 0, 0.5);
+    const out = dir.clone().normalize();
+    // On sort la caméra de la coque : sa position est en mètres (repère du poignet).
+    urdfEyeHost.position.copy(out.clone().multiplyScalar(0.085));
+    urdfEyeHost.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), out);
+  }
 
   const box = new THREE.Box3().setFromObject(urdfRoot);
   const size = box.getSize(new THREE.Vector3());
@@ -864,8 +878,21 @@ async function setURDF(on){
     else o.visible = !on;
   });
   // l'oeil suit le poignet du vrai robot
+  if(!eyeHome){                                   // mémorise la pose d'origine
+    eyeHome = [eyePod, eye, glowSpr, eyeLight].map(x=>({
+      o:x, p:x.position.clone(), q:x.quaternion.clone() }));
+  }
   const host = on ? (urdfEyeHost || wristG) : wristG;
   if(host){ [eyePod, eye, glowSpr, eyeLight].forEach(x=>{ if(x) host.add(x); }); }
+  if(on && urdfEyeHost){
+    // Dans l'hôte, +Z pointe hors de la coque : on aligne la caméra dessus.
+    eyePod.position.set(0,0,0);     eyePod.rotation.set(0,0,0);
+    eye.position.set(0,0,0.10);
+    glowSpr.position.set(0,0,0.12);
+    eyeLight.position.set(0,0,0.16);
+  } else if(!on && eyeHome){
+    eyeHome.forEach(h=>{ h.o.position.copy(h.p); h.o.quaternion.copy(h.q); });
+  }
   if(!on && urdfRoot) urdfRoot.visible = false;
 }
 
