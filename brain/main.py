@@ -50,6 +50,12 @@ _MODELS_DIR = WEB_INDEX.parent / "models"
 if _MODELS_DIR.is_dir():
     app.mount("/models", StaticFiles(directory=str(_MODELS_DIR)), name="models")
 
+# Description URDF du Moveo (arbre cinématique + meshes) : c'est elle qui donne
+# les positions exactes d'assemblage que les STL bruts ne portent pas.
+_URDF_DIR = WEB_INDEX.parent / "urdf"
+if _URDF_DIR.is_dir():
+    app.mount("/urdf", StaticFiles(directory=str(_URDF_DIR)), name="urdf")
+
 TICK_HZ = 8  # fréquence de la boucle de vie du cerveau
 
 

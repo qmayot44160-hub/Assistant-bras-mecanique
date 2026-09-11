@@ -377,7 +377,7 @@
     <button class="act" data-cmd="ask"><span class="ic">❓</span>Pose une question</button>
     <button class="act" data-cmd="praise"><span class="ic">✨</span>Félicite-le</button>
     <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
-    <button class="act" id="asmBtn" data-cmd="assemble" hidden><span class="ic">🦾</span>Vraies pièces</button>
+    <button class="act" id="asmBtn" data-cmd="assemble" hidden><span class="ic">🦾</span>Vrai Moveo</button>
     <button class="act" id="memBtn" data-cmd="memory" hidden><span class="ic">🧠</span>Mémoire</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
@@ -699,16 +699,152 @@ function setAssembly(on){
     else o.visible = !on;                          // pieces stylisees
   });
 }
-function toggleAssembly(btn){
-  setAssembly(!assemblyOn);
+async function toggleAssembly(btn){
+  if(btn) btn.disabled = true;
+  await setURDF(!urdfOn);
+  if(btn) btn.disabled = false;
+  assemblyOn = urdfOn;
   if(btn){ btn.classList.toggle('active', assemblyOn);
-    btn.innerHTML = assemblyOn ? '<span class="ic">🧊</span>Vue stylisée' : '<span class="ic">🦾</span>Vraies pièces'; }
+    btn.innerHTML = assemblyOn ? '<span class="ic">🧊</span>Vue stylisée' : '<span class="ic">🦾</span>Vrai Moveo'; }
   // Le bras réel est plus grand (vraies longueurs de segments) : on recule la
   // caméra et on vise plus haut pour le cadrer entier au-dessus du HUD.
   camTween = null;
   if(assemblyOn){ orbit.theta=0.6; orbit.phi=1.18; orbit.r=22; orbit.target.set(0,3.0,0); }
   else { orbit.theta=CAM_HOME.theta; orbit.phi=CAM_HOME.phi; orbit.r=CAM_HOME.r; orbit.target.copy(CAM_HOME.target); }
-  log('etat', assemblyOn ? 'montage: vraies pièces imprimées (Moveo)' : 'montage: vue stylisée');
+  log('etat', assemblyOn ? 'corps: vrai Moveo (URDF)' : 'corps: Moveo modélisé');
+}
+
+/* ---------- Le VRAI Moveo, via son URDF ----------
+   Un URDF est la description standard d'un robot : chaque <link> porte son
+   mesh, chaque <joint> porte l'assemblage (origine xyz + rpy) et la
+   cinématique (axe, limites). C'est exactement la donnée qui manque aux STL
+   bruts, posés à plat pour l'impression. Source : jesseweisberg/moveo_ros (MIT). */
+const URDF_URL = 'urdf/moveo.urdf';
+// Quelle articulation du robot réel suit quel axe de notre squelette
+const URDF_DRIVE = { Joint_1:'yaw', Joint_2:'shoulder', Joint_3:'elbow',
+                     Joint_4:'wristRoll', Joint_5:'wristPitch' };
+// Quel link correspond à quelle pièce du catalogue (clic -> fiche)
+const URDF_PART = { base_link:'base', Link_1:'yaw', Link_2:'upper', Link_3:'elbow',
+                    Link_4:'forearm', Link_5:'wrist' };
+let urdfRoot=null, urdfJoints={}, urdfLinks={}, urdfOn=false, urdfLoading=false;
+let urdfEyeHost=null;
+
+// URDF : rpy est une rotation d'axes FIXES Rz(yaw)·Ry(pitch)·Rx(roll).
+// Dans three.js c'est l'ordre 'ZYX' (sinon l'assemblage part de travers).
+function rpyToEuler(rpy){ return new THREE.Euler(rpy[0], rpy[1], rpy[2], 'ZYX'); }
+function numList(str, fallback){
+  if(!str) return fallback.slice();
+  const v = str.trim().split(/\s+/).map(Number);
+  return v.length===3 && v.every(n=>isFinite(n)) ? v : fallback.slice();
+}
+
+async function loadURDF(){
+  if(urdfRoot || urdfLoading || !window.THREE || !THREE.STLLoader) return urdfRoot;
+  urdfLoading = true;
+  let doc;
+  try{
+    const xml = await (await fetch(URDF_URL, {cache:'force-cache'})).text();
+    doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if(doc.querySelector('parsererror')) throw new Error('URDF illisible');
+  }catch(e){ urdfLoading=false; log('etat','URDF introuvable'); return null; }
+
+  // 1) un groupe par link, avec son mesh
+  const loader = new THREE.STLLoader();
+  const matU = new THREE.MeshStandardMaterial({color:0xd7dde6, metalness:0.45, roughness:0.45, envMapIntensity:1.1});
+  const pending = [];
+  doc.querySelectorAll('robot > link').forEach(l=>{
+    const name = l.getAttribute('name');
+    const g = new THREE.Group(); g.name = name;
+    urdfLinks[name] = g;
+    const mesh = l.querySelector('visual > geometry > mesh');
+    if(!mesh || name === 'base_link') return;   // la planche de montage : notre socle fait déjà le travail
+    const file = mesh.getAttribute('filename');
+    const vo = l.querySelector('visual > origin');
+    const xyz = numList(vo && vo.getAttribute('xyz'), [0,0,0]);
+    const rpy = numList(vo && vo.getAttribute('rpy'), [0,0,0]);
+    pending.push(new Promise(res=>{
+      loader.load('urdf/'+file, geo=>{
+        const m = new THREE.Mesh(geo, matU);
+        m.position.set(xyz[0],xyz[1],xyz[2]);
+        m.setRotationFromEuler(rpyToEuler(rpy));
+        if(URDF_PART[name]) m.userData.partId = URDF_PART[name];
+        m.userData.urdf = true;
+        g.add(m); res();
+      }, undefined, ()=>res());
+    }));
+  });
+
+  // 2) les joints assemblent l'arbre : origine figée, puis rotation sur l'axe
+  doc.querySelectorAll('robot > joint').forEach(j=>{
+    const parent = urdfLinks[j.querySelector('parent').getAttribute('link')];
+    const child  = urdfLinks[j.querySelector('child').getAttribute('link')];
+    if(!parent || !child) return;
+    const o = j.querySelector('origin');
+    const xyz = numList(o && o.getAttribute('xyz'), [0,0,0]);
+    const rpy = numList(o && o.getAttribute('rpy'), [0,0,0]);
+    const fixed = new THREE.Group();                 // l'assemblage, immobile
+    fixed.position.set(xyz[0],xyz[1],xyz[2]);
+    fixed.setRotationFromEuler(rpyToEuler(rpy));
+    const hinge = new THREE.Group();                 // la rotation de l'axe
+    fixed.add(hinge); hinge.add(child); parent.add(fixed);
+    const a = j.querySelector('axis');
+    const ax = numList(a && a.getAttribute('xyz'), [0,0,1]);
+    const lim = j.querySelector('limit');
+    urdfJoints[j.getAttribute('name')] = {
+      hinge, axis: new THREE.Vector3(ax[0],ax[1],ax[2]).normalize(),
+      lower: lim ? parseFloat(lim.getAttribute('lower')) : -Math.PI,
+      upper: lim ? parseFloat(lim.getAttribute('upper')) :  Math.PI,
+      type: j.getAttribute('type'),
+    };
+  });
+
+  await Promise.all(pending);
+
+  // 3) Z-up (convention robotique) -> Y-up (three.js), puis mise à l'échelle
+  const base = urdfLinks['base_link'];
+  if(!base){ urdfLoading=false; return null; }
+  urdfRoot = new THREE.Group();
+  const zup = new THREE.Group(); zup.rotation.x = -Math.PI/2;
+  zup.add(base); urdfRoot.add(zup);
+  urdfRoot.visible = false; root.add(urdfRoot);
+
+  urdfEyeHost = new THREE.Group();                  // annule l'échelle du robot
+  if(urdfLinks['Link_5']) urdfLinks['Link_5'].add(urdfEyeHost);
+
+  const box = new THREE.Box3().setFromObject(urdfRoot);
+  const size = box.getSize(new THREE.Vector3());
+  const s = size.y > 0.01 ? 8.2/size.y : 10;          // même gabarit que le bras stylisé
+  urdfRoot.scale.setScalar(s);
+  // Sans la planche de montage, le bras garde l'offset qu'elle portait :
+  // on le recentre sur l'origine et on le pose au sol.
+  const c = box.getCenter(new THREE.Vector3());
+  urdfRoot.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+  urdfEyeHost.scale.setScalar(1/s);                   // l'oeil garde sa taille
+  urdfLoading = false;
+  log('etat','vrai Moveo chargé ('+Object.keys(urdfJoints).length+' articulations)');
+  return urdfRoot;
+}
+
+function setJoint(name, angle){
+  const j = urdfJoints[name]; if(!j) return;
+  if(j.type !== 'continuous') angle = Math.max(j.lower, Math.min(j.upper, angle));
+  j.hinge.quaternion.setFromAxisAngle(j.axis, angle);
+}
+
+async function setURDF(on){
+  urdfOn = on;
+  if(on) await loadURDF();
+  if(urdfRoot) urdfRoot.visible = on;
+  root.traverse(o=>{
+    if(!o.isMesh || o.userData.urdf) return;
+    if(o.userData.partId==='eye') return;          // l'oeil reste (l'ame)
+    if(o.userData.asm) o.visible = false;
+    else o.visible = !on;
+  });
+  // l'oeil suit le poignet du vrai robot
+  const host = on ? (urdfEyeHost || wristG) : wristG;
+  if(host){ [eyePod, eye, glowSpr, eyeLight].forEach(x=>{ if(x) host.add(x); }); }
+  if(!on && urdfRoot) urdfRoot.visible = false;
 }
 
 /* ---------- FX JARVIS : survol, focus caméra, anneau de scan ---------- */
@@ -1112,6 +1248,15 @@ function frame(now){
   wristG.rotation.y    = cl(cur.wristY + off.wristYaw, JLIM.wrist2[0], JLIM.wrist2[1]);
   wristG.rotation.z    = cl(cur.wristZ + off.wristRoll, JLIM.wrist2[0], JLIM.wrist2[1]);
 
+  // Le vrai Moveo suit la même pose que le squelette (angles déjà bornés)
+  if(urdfOn){
+    setJoint('Joint_1', yawG.rotation.y);
+    setJoint('Joint_2', shoulderG.rotation.x);
+    setJoint('Joint_3', elbowG.rotation.x);
+    setJoint('Joint_4', wristG.rotation.z);
+    setJoint('Joint_5', wristG.rotation.x);
+  }
+
   // Œil : couleur + pulsation + clignement
   const col = new THREE.Color(EYE_COLORS[brain.state]);
   eyeMat.color.lerp(col, 0.1); eyeMat.emissive.lerp(col, 0.1);
@@ -1130,6 +1275,11 @@ function frame(now){
       - (['happy','greet','curious'].includes(brain.state) ? 0.22 : 0)
       + (REDUCED ? 0 : Math.sin(clock*1.3)*0.04);
     for(const k of fingers) k.rotation.z = grip;
+    if(urdfOn){
+      const g = Math.max(0, Math.min(1, (grip + 0.1) / 0.45));   // 0 ouvert -> 1 serré
+      setJoint('Gripper_Servo_Gear_Joint',  g * 1.2);
+      setJoint('Gripper_Idol_Gear_Joint',  -g * 1.2);
+    }
   }
 
   // Meters

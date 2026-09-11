@@ -135,3 +135,12 @@ L'app choisit selon son contexte :
 Les photos sont compressées avant stockage. API : `GET/POST/PUT/DELETE
 /api/parts`, `POST /api/parts/{id}/upload`, `POST /api/reset`, `GET /api/files/{nom}`.
 
+## Crédits
+
+- Modèle imprimable **Robotic Arm** de TomKnox (dérivé du BCN3D Moveo) :
+  https://www.printables.com/model/1510558-robotic-arm
+- Description **URDF** du Moveo (arbre cinématique + meshes) reprise de
+  `jesseweisberg/moveo_ros`, licence MIT. C'est elle qui porte les positions
+  exactes d'assemblage : les STL d'impression, eux, sont posés à plat sur le
+  plateau et ne contiennent aucune information de montage.
+  Licence conservée dans `web/urdf/LICENSE-moveo_ros.txt`.
