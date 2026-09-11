@@ -1,4 +1,4 @@
-# Faire tourner le cerveau d'ARIA sur ton PC (RTX 2060, 32 Go)
+# Faire tourner le cerveau d'ARIA sur ton PC (RTX 2070 8 Go, 32 Go RAM)
 
 Objectif : un vrai modèle qui pense **chez toi**, accéléré par ta carte
 graphique, sans rien envoyer dans le cloud. On utilise **Ollama** (le plus
@@ -67,16 +67,20 @@ Avant de lancer, tu peux définir une variable `OLLAMA_MODEL`. Selon l'envie :
 | `qwen2.5:7b` (défaut) | ~4,7 Go | bon compromis, très bon en français |
 | `llama3.1:8b` | ~4,9 Go | alternative solide |
 
-Ta RTX 2060 a 6 Go de VRAM. Un 7B en Q4 pèse ~4,7 Go : il rentre presque en
-entier, le reste passe sur le CPU (tu as 32 Go de RAM, large). Ça marche, mais
-si tu trouves ARIA lente à répondre, **passe en `qwen2.5:3b`** : il tient
-entièrement sur la carte et répond quasi instantanément. Pour deux phrases de
-petit robot, la différence de finesse ne se voit pas.
+Ta RTX 2070 a 8 Go de VRAM. Un 7B en Q4 pèse ~4,7 Go : il **tient entièrement
+sur la carte**, cache de contexte compris. Aucune couche ne déborde sur le CPU,
+les réponses sortent vite. Garde `qwen2.5:7b`, c'est le bon choix ici.
+
+Si un jour tu veux plus malin, tu as la place pour un 13B en Q4 (~8 Go, ça
+commencera à déborder un peu) ou un 14B. `qwen2.5:14b` vaut l'essai :
 
 ```
-set OLLAMA_MODEL=qwen2.5:3b
+set OLLAMA_MODEL=qwen2.5:14b
 run_local.bat
 ```
+
+Le script affiche ta carte au démarrage, donc tu vois toujours sur quoi tu
+tournes.
 
 ## Interrupteur
 

@@ -3,7 +3,7 @@ Cerveau LOCAL d'ARIA : un vrai modèle de langage qui tourne CHEZ TOI, via
 Ollama, sans aucun appel externe (pas de Claude, pas d'API cloud).
 
 Pourquoi Ollama : c'est le moyen le plus simple de faire tourner un modèle
-open-source sur un PC Windows/Mac/Linux avec accélération GPU (ta RTX 2060).
+open-source sur un PC Windows/Mac/Linux avec accélération GPU (ta RTX 2070).
 Tu installes Ollama, tu fais `ollama pull qwen2.5:7b`, et notre serveur lui
 parle en local sur http://127.0.0.1:11434.
 
@@ -19,8 +19,9 @@ Trois pièges, et comment ce module les évite :
      démarrage, on retente à chaque message (toutes les RECHECK_SECONDS).
   2. Ollama répond mais le modèle n'est pas téléchargé -> /api/tags dit quels
      modèles existent, on le vérifie et on le dit clairement.
-  3. La toute première réponse charge le modèle en VRAM (30 à 90 s sur une
-     6 Go) -> on préchauffe au démarrage et le premier appel a un délai long.
+  3. La toute première réponse charge le modèle en VRAM (quelques dizaines
+     de secondes) -> on préchauffe au démarrage et le premier appel a un
+     délai long au lieu d'expirer.
 
 Sur un serveur sans Ollama (ex. Railway), le ping échoue -> cerveau local
 indisponible -> repli automatique sur les règles scriptées. Rien ne casse.
