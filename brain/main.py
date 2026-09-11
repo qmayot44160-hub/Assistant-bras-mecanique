@@ -165,7 +165,8 @@ async def favicon() -> FileResponse:
 async def api_shutdown(request: Request) -> dict:
     """Éteindre ARIA depuis sa propre page.
 
-    Lancée par ARIA.vbs, elle tourne sans fenêtre : il n'y a plus de Ctrl+C.
+    Lancée par le raccourci, sa fenêtre est réduite dans la barre des tâches :
+    autant pouvoir l'arrêter depuis la page.
     Réservé aux requêtes venant de cette machine, pour qu'un téléphone
     connecté de l'extérieur ne puisse pas la couper d'un doigt qui glisse.
     """
@@ -186,6 +187,15 @@ async def health() -> dict:
     return {"ok": True, "state": brain.state, "awake": brain.awake,
             "mode": BRAIN_MODE, "local": local_brain.status(), "claude": ai_layer.available(), "claude_error": ai_layer.last_error(),
             "memory": memory.stats()}
+
+
+def _dire_outil(act: dict) -> str:
+    """Ligne lisible pour le journal : « bouge épaule -> 40° »."""
+    if act.get("name") == "bouger":
+        return "bouge %s -> %g°" % (act.get("articulation"), act.get("degres", 0))
+    if act.get("name") == "montrer_piece":
+        return "montre " + str(act.get("nom") or act.get("piece"))
+    return str(act.get("name"))
 
 
 async def on_say(text: str) -> list[dict]:
@@ -212,6 +222,12 @@ async def on_say(text: str) -> list[dict]:
         decision = await ai_layer.decide_json(brain, text)
     if decision is not None:
         events += brain.apply_decision(decision)
+        # Les gestes que le modèle a décidé lui-même : le corps 3D les exécute,
+        # et le journal des couches les affiche pour qu'on voie ce qu'elle fait.
+        for act in (decision.get("actions") or []):
+            events.append({"type": "log", "layer": "outil",
+                           "msg": _dire_outil(act)})
+            events.append(act)
     else:
         # Repli scripté : on le dit, sinon on croit qu'ARIA est bête alors que
         # c'est l'appel au cerveau qui a échoué (clé, réseau, quota...).

@@ -289,6 +289,54 @@ def context(max_events: int = CONTEXT_EVENTS) -> str:
     return "\n".join(parts)
 
 
+def search(term: str, limit: int = 6) -> list[str]:
+    """Cherche un mot dans le journal, du plus récent au plus ancien.
+
+    On remonte le fichier par blocs depuis la fin : le journal est en ajout
+    seul et peut peser des dizaines de Mo, le relire entier pour trouver trois
+    lignes serait absurde.
+    """
+    t = (term or "").strip().lower()
+    if not t:
+        return []
+    try:
+        size = EVENTS_FILE.stat().st_size
+    except OSError:
+        return []
+
+    found: list[str] = []
+    chunk, buf, pos, reste = 256 * 1024, b"", size, b""
+    try:
+        with EVENTS_FILE.open("rb") as f:
+            while pos > 0 and len(found) < limit:
+                step = min(chunk, pos)
+                pos -= step
+                f.seek(pos)
+                bloc = f.read(step) + reste
+                lignes = bloc.split(b"\n")
+                # La première ligne du bloc est peut-être coupée : on la garde
+                # pour la recoller au bloc suivant (sauf au début du fichier).
+                reste = lignes.pop(0) if pos > 0 else b""
+                for raw in reversed(lignes):
+                    if len(found) >= limit:
+                        break
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        e = json.loads(raw.decode("utf-8", "replace"))
+                    except ValueError:
+                        continue
+                    txt = e.get("t", "")
+                    if t in txt.lower():
+                        qui = "lui" if e.get("r") == "user" else "toi"
+                        found.append("%s: %s" % (qui, txt))
+    except OSError:
+        return found
+    found.reverse()                      # rendu dans l'ordre chronologique
+    return found
+
+
 def stats() -> dict:
     data = _read()
     return {

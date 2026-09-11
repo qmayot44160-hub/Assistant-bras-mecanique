@@ -183,6 +183,28 @@ seul morceau d'ARIA qui n'est pas local. Sa voix, son cerveau et sa mémoire,
 eux, ne quittent pas la machine. Le jour où on branche Whisper sur le serveur
 Python, ce bout redevient local lui aussi.
 
+## Elle peut agir, pas seulement parler
+
+Le modèle dispose de quatre outils qu'il décide d'appeler lui-même :
+
+| Tu dis | Elle appelle | Ce qui se passe |
+|---|---|---|
+| « lève ton bras », « tourne-toi » | `bouger` | l'articulation part à l'angle voulu, puis se relâche au bout de 9 s |
+| « montre-moi le coude » | `montrer_piece` | la vue 3D se braque dessus et ouvre sa fiche |
+| « il me faut quoi comme moteur ? » | `chercher_piece` | elle lit la vraie nomenclature avant de répondre |
+| « qu'est-ce que je t'ai dit sur les courroies ? » | `fouiller_memoire` | elle relit son journal au lieu de deviner |
+
+Le journal des couches affiche une ligne `OUTIL` à chaque fois, tu vois donc
+exactement ce qu'elle fait.
+
+Les angles sont bornés aux amplitudes réelles du bras (base -60 à +90, épaule
+-110 à +110, coude et poignet -60 à +90). Si le modèle demande plus, on borne
+**et on le lui dit**, sinon il annoncerait un mouvement qui n'a pas eu lieu.
+
+Ça demande un modèle qui sait appeler des fonctions. `qwen2.5:7b` le fait. Si
+tu en choisis un qui ne le sait pas, ARIA le détecte au premier refus et
+repart sans outils : elle parle, mais elle n'agit plus.
+
 ## Sa mémoire ne s'efface plus
 
 Les échanges sont écrits dans `data/events.jsonl`, une ligne par phrase, en

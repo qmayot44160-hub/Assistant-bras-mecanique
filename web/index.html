@@ -88,6 +88,7 @@
   .tag-decision{color:var(--cyan)}
   .tag-dialogue{color:var(--amber)}
   .tag-etat{color:var(--green)}
+  .tag-outil{color:var(--cyan)}
 
   /* Dock */
   .dock{left:50%;transform:translateX(-50%);bottom:20px;width:min(720px,calc(100vw - 32px));
@@ -1218,7 +1219,10 @@ function log(layer, msg){
    fenêtre, donc plus de Ctrl+C. Seulement sur cette machine : depuis le
    téléphone, le serveur refuse de toute façon. */
 const quitBtn = document.getElementById('quitBtn');
-if(quitBtn && !inArtifact && ['127.0.0.1','localhost','::1'].includes(location.hostname)){
+// Pas de test sur `inArtifact` ici : il est déclaré bien plus bas, et un const
+// lu avant sa ligne lève une ReferenceError qui tue tout le script. Le test sur
+// l'hôte suffit de toute façon : dans l'artifact on n'est jamais sur localhost.
+if(quitBtn && ['127.0.0.1','localhost','::1'].includes(location.hostname)){
   quitBtn.hidden = false;
   quitBtn.addEventListener('click', async ()=>{
     if(!confirm("Éteindre ARIA ? Sa mémoire est déjà enregistrée.")) return;
@@ -1488,6 +1492,7 @@ function onServerEvent(d){
   else if(d.type==='thought'){ if(typeof d.text==='string') think(d.text); }
   else if(d.type==='attention'){ brain.attention.x=+d.x||0; brain.attention.y=+d.y||0; }
   else if(d.type==='log'){ log(d.layer||'etat', d.msg||''); }
+  else if(d.type==='action'){ applyAction(d); }
 }
 function serverSend(obj){ if(server.connected){ try{ server.ws.send(JSON.stringify(obj)); }catch(_){} } }
 function sendAttention(){
@@ -1572,7 +1577,36 @@ const pose = { yaw:0, shoulder:-0.45, elbow:1.15, wristX:-0.3, wristY:0, wristZ:
 const cur  = Object.assign({}, pose);
 let clock = 0, last = performance.now();
 
-function targetPose(){
+/* ---------- Gestes décidés par ARIA elle-même ----------
+   Quand le modèle appelle son outil `bouger`, on ne touche pas à la pose de
+   repos : on pose une consigne par-dessus, qui s'efface au bout de quelques
+   secondes. Sinon elle resterait figée dans la position demandée pour de bon.
+
+   Le signe : dans le squelette, une valeur plus NÉGATIVE redresse l'épaule, le
+   coude et le poignet (au repos ils sont repliés, en positif). On inverse donc,
+   pour que « +40 degrés » veuille bien dire « lève ». La base, elle, est
+   symétrique et n'a pas besoin de ça. */
+const ACT_JOINT = {
+  base:    { k:'yaw',      s: 1 },
+  epaule:  { k:'shoulder', s:-1 },
+  coude:   { k:'elbow',    s:-1 },
+  poignet: { k:'wristX',   s:-1 },
+};
+const POSE_HOLD_MS = 9000;
+let poseHold = {}, poseHoldUntil = 0;
+
+function applyAction(a){
+  if(!a || typeof a!=='object') return;
+  if(a.name === 'bouger'){
+    const m = ACT_JOINT[a.articulation]; if(!m) return;
+    poseHold[m.k] = (+a.degres || 0) * Math.PI/180 * m.s;
+    poseHoldUntil = performance.now() + POSE_HOLD_MS;
+  } else if(a.name === 'montrer_piece'){
+    if(typeof openPartHUD === 'function') openPartHUD(a.piece, partCenter(a.piece));
+  }
+}
+
+function basePose(){
   if(brain.awake){
     const a = brain.attention;
     // Éveillé : posture redressée, proche de la station debout du vrai bras.
@@ -1581,6 +1615,13 @@ function targetPose(){
   }
   // En veille : le bras se replie sur lui-même.
   return { yaw:cur.yaw*0.95, shoulder:0.45, elbow:1.5, wristX:0.7, wristY:0, wristZ:0.16 };
+}
+
+function targetPose(){
+  const p = basePose();
+  if(performance.now() < poseHoldUntil) Object.assign(p, poseHold);
+  else if(poseHoldUntil){ poseHold = {}; poseHoldUntil = 0; }
+  return p;
 }
 
 function frame(now){

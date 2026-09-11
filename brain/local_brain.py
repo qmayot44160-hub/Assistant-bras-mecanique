@@ -44,8 +44,12 @@ REPLY_TIMEOUT = 90.0       # une fois chaud, une phrase courte arrive en <10 s
 
 try:
     import memory
+    import tools
 except ImportError:
     from brain import memory
+    from brain import tools
+
+MAX_TOOL_ROUNDS = 3        # au-delà, le modèle tourne en rond
 
 LOCAL_SYSTEM = (
     "Tu es ARIA, un petit bras robotisé d'atelier : curieux, joueur, attachant. "
@@ -55,7 +59,11 @@ LOCAL_SYSTEM = (
     "TU AS UNE MÉMOIRE. Quand on te donne ce dont tu te souviens, sers-t'en : "
     "appelle l'humain par son prénom si tu le connais, et si on te demande un "
     "souvenir qui y figure, réponds-le précisément. N'invente jamais un souvenir "
-    "absent : dis alors que tu ne le sais pas encore."
+    "absent : dis alors que tu ne le sais pas encore.\n"
+    "TU AS UN CORPS ET DES OUTILS. Pour bouger, montrer une pièce, consulter ta "
+    "nomenclature ou relire tes échanges passés, APPELLE L'OUTIL au lieu de "
+    "raconter que tu le fais. Après l'avoir appelé, dis en une phrase ce que tu "
+    "viens de faire ou de trouver."
 )
 
 
@@ -65,6 +73,7 @@ _state = {
     "warm": False,       # le modèle est chargé, les réponses sont rapides
     "error": None,
     "models": [],        # ce qu'Ollama a réellement sous la main
+    "tools": True,       # faux si le modèle choisi ne sait pas appeler d'outils
 }
 _last_check = 0.0
 _lock = threading.Lock()
@@ -74,7 +83,7 @@ def status() -> dict:
     return {"ready": _state["ready"], "loading": _state["loading"],
             "warm": _state["warm"], "error": _state["error"],
             "host": OLLAMA_HOST, "model": OLLAMA_MODEL,
-            "models": _state["models"]}
+            "models": _state["models"], "tools": _state["tools"]}
 
 
 def available() -> bool:
@@ -196,42 +205,101 @@ def _messages(text: str) -> list[dict]:
     return msgs
 
 
-def _generate(text: str) -> str:
-    """Bloquant : à appeler dans un thread. Renvoie "" si indisponible."""
-    if not _ensure_ready():
-        return ""
-    timeout = REPLY_TIMEOUT if _state["warm"] else WARMUP_TIMEOUT
+def _chat(msgs: list[dict], with_tools: bool, timeout: float) -> dict | None:
+    """Un aller-retour avec Ollama. None si l'appel a échoué (l'erreur est
+    rangée dans _state pour que l'app puisse la montrer)."""
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": msgs,
+        "stream": False,
+        "options": {"temperature": 0.7, "top_p": 0.9, "num_predict": 160},
+    }
+    if with_tools:
+        payload["tools"] = tools.DECLARATIONS
     try:
-        data = _post("/api/chat", {
-            "model": OLLAMA_MODEL,
-            "messages": _messages(text),
-            "stream": False,
-            "options": {"temperature": 0.7, "top_p": 0.9, "num_predict": 80},
-        }, timeout=timeout)
+        data = _post("/api/chat", payload, timeout=timeout)
     except urllib.error.HTTPError as e:
         body = ""
         try:
             body = e.read().decode("utf-8", "replace")[:200]
         except Exception:
             pass
+        if with_tools and _state["tools"]:
+            # Modèle sans appel de fonctions : on le note et on repart sans.
+            # Mieux vaut ARIA bavarde que muette.
+            _state["tools"] = False
+            print("local_brain: ce modèle ne gère pas les outils ->", body[:120])
+            return _chat(msgs, False, timeout)
         _state["ready"] = False       # forcera un nouveau diagnostic complet
         _state["error"] = "Ollama a refusé la requête (HTTP %s) %s" % (e.code, body)
-        return ""
+        return None
     except Exception as e:
         _state["ready"] = False
         _state["error"] = "appel Ollama échoué (%s)" % type(e).__name__
-        return ""
-
+        return None
     _state["warm"] = True
     _state["error"] = None
-    reply = ((data.get("message") or {}).get("content") or "").strip()
+    return data
+
+
+def _clean(reply: str) -> str:
+    reply = (reply or "").strip()
     # Tirets cadratins d'abord, espaces ensuite : l'inverse laisse des doubles
     # espaces autour du tiret de remplacement.
-    reply = reply.replace("—", " - ").replace("–", " - ")
+    reply = reply.replace("\u2014", " - ").replace("\u2013", " - ")
     reply = " ".join(reply.split())
     if len(reply) > 160:
         reply = reply[:157].rstrip() + "..."
     return reply
+
+
+def _args_of(call: dict) -> dict:
+    """Ollama rend les arguments en objet, certaines versions en chaîne JSON."""
+    raw = (call.get("function") or {}).get("arguments")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _generate(text: str) -> tuple[str, list[dict]]:
+    """Bloquant : à appeler dans un thread.
+
+    Renvoie (phrase, actions). Les actions sont les gestes que le modèle a
+    décidé de faire et que le corps 3D doit exécuter.
+    """
+    if not _ensure_ready():
+        return "", []
+    timeout = REPLY_TIMEOUT if _state["warm"] else WARMUP_TIMEOUT
+    msgs = _messages(text)
+    actions: list[dict] = []
+
+    for _ in range(MAX_TOOL_ROUNDS):
+        data = _chat(msgs, _state["tools"], timeout)
+        if data is None:
+            return "", actions
+        msg = data.get("message") or {}
+        calls = msg.get("tool_calls") or []
+        if not calls:
+            return _clean(msg.get("content")), actions
+
+        msgs.append(msg)                       # la demande d'outil du modèle
+        for call in calls[:4]:
+            name = (call.get("function") or {}).get("name")
+            rendu, action = tools.run(name, _args_of(call))
+            if action:
+                actions.append(action)
+            print("local_brain: outil", name, "->", rendu.replace("\n", " | ")[:90])
+            msgs.append({"role": "tool", "name": name, "content": rendu})
+
+    # Le modèle n'a fait qu'appeler des outils : on lui redemande une phrase,
+    # sans outils cette fois, sinon il repartirait en boucle.
+    data = _chat(msgs, False, timeout)
+    if data is None:
+        return "", actions
+    return _clean((data.get("message") or {}).get("content")), actions
 
 
 def _gesture_from(user_text: str, reply: str) -> tuple[str, str]:
@@ -258,11 +326,14 @@ async def decide_json(brain, text: str):
     """
     import asyncio
     try:
-        reply = await asyncio.to_thread(_generate, text)
+        reply, actions = await asyncio.to_thread(_generate, text)
     except Exception as e:
         print("local_brain: erreur inference ->", type(e).__name__, e)
         return None
-    if not reply:
+    if not reply and not actions:
         return None
+    if not reply:
+        reply = "Voilà."                        # elle a agi sans rien dire
     state, gesture = _gesture_from(text, reply)
-    return {"state": state, "gesture": gesture, "say": reply, "sleep": False}
+    return {"state": state, "gesture": gesture, "say": reply,
+            "sleep": False, "actions": actions}
