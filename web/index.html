@@ -1,3 +1,7 @@
+<meta charset="utf-8">
+<!-- Sans cette balise, le téléphone dessine la page en 980 px puis la réduit :
+     tout devient minuscule et les cibles tactiles inutilisables. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Atelier ARIA</title>
 <meta name="description" content="Bras robotisé virtuel au cerveau en couches : il bouge seul et te répond par hochements de tête.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -995,15 +999,24 @@ function setFocus(id){
   if(id) applyMat(id, focusMat);
   else if(hoverPart) applyMat(hoverPart, hoverMat);
 }
+/* Un mesh peut être visible alors qu'un de ses parents est masqué : il faut
+   remonter la chaîne, sinon on vise et on clique des pièces invisibles. */
+function isShown(o){ let n=o; while(n){ if(n.visible===false) return false; n=n.parent; } return true; }
+
+/* Centre RÉEL de la pièce : la moyenne des origines des meshes visait le point
+   d'articulation du link, souvent loin de la forme visible. On prend le centre
+   de la boîte englobante. */
 function partCenter(id){
-  const ms=meshesOf(id); if(!ms.length) return null;
-  const v=new THREE.Vector3(); ms.forEach(m=>v.add(m.getWorldPosition(new THREE.Vector3())));
-  return v.multiplyScalar(1/ms.length);
+  const ms=meshesOf(id).filter(isShown); if(!ms.length) return null;
+  const box=new THREE.Box3(); ms.forEach(m=>box.expandByObject(m));
+  return box.isEmpty() ? null : box.getCenter(new THREE.Vector3());
 }
 function pickHit(x,y){
   const ndc=new THREE.Vector2((x/window.innerWidth)*2-1, -(y/window.innerHeight)*2+1);
   raycaster.setFromCamera(ndc, camera);
-  const ms=[]; root.traverse(o=>{ if(o.isMesh && o.userData.partId) ms.push(o); });
+  // three.js lance le rayon même sur les objets masqués : on filtre nous-mêmes,
+  // sinon le bras stylisé caché intercepte les clics destinés au vrai Moveo.
+  const ms=[]; root.traverse(o=>{ if(o.isMesh && o.userData.partId && isShown(o)) ms.push(o); });
   const h=raycaster.intersectObjects(ms,false)[0];
   return h ? {id:h.object.userData.partId, point:h.point.clone()} : null;
 }
@@ -1464,7 +1477,7 @@ const _bc = new THREE.Vector3(), _bbox = new THREE.Box3();
 function bodyCenter(){
   _bbox.makeEmpty();
   const src = (urdfOn && urdfRoot) ? urdfRoot : root;
-  src.traverse(o=>{ if(o.isMesh && o.visible && o.userData.partId!=='eye') _bbox.expandByObject(o); });
+  src.traverse(o=>{ if(o.isMesh && isShown(o) && o.userData.partId!=='eye') _bbox.expandByObject(o); });
   if(_bbox.isEmpty()) return _bc.set(0, 3, 0);
   return _bbox.getCenter(_bc);
 }
@@ -2061,7 +2074,7 @@ const hud3d=document.getElementById('hud3d'), hudSvg=document.getElementById('hu
 let hudPart=null, hudItems=[], hudT=0;
 
 function partSphere(id){
-  const ms=meshesOf(id).filter(m=>m.visible!==false);
+  const ms=meshesOf(id).filter(isShown);
   if(!ms.length) return null;
   const box=new THREE.Box3();
   ms.forEach(m=>box.expandByObject(m));
@@ -2087,6 +2100,7 @@ function openPartHUD(id, point){
   sfx('focus');
 
   const cat=p.category||'achat';
+  const tight = window.innerWidth < 560;   // sur téléphone, on garde l'essentiel
   // Cartouche titre
   hudItems.push({ a:-150, el: hudCard(
     `<h4>${esc(p.name)}</h4><div class="cat">${esc(CAT_LABEL[cat]||cat)}</div>`+
@@ -2101,17 +2115,17 @@ function openPartHUD(id, point){
   // Composants
   if(Array.isArray(p.components)&&p.components.length)
     hudItems.push({ a:40, el: hudCard('<h4>Composants</h4>'+
-      p.components.slice(0,5).map(c=>`<div class="hr"><span>${esc(c.name)}</span><span>×${esc(c.qty==null?1:c.qty)}</span></div>`).join('')) });
+      p.components.slice(0, tight?3:5).map(c=>`<div class="hr"><span>${esc(c.name)}</span><span>×${esc(c.qty==null?1:c.qty)}</span></div>`).join('')) });
 
   // Fils & connecteurs
-  if(Array.isArray(p.wires)&&p.wires.length)
+  if(!tight && Array.isArray(p.wires)&&p.wires.length)
     hudItems.push({ a:135, el: hudCard('<h4>Fils</h4>'+
       p.wires.slice(0,4).map(w=>`<div class="hr"><span>${esc(w.from)} → ${esc(w.to)}</span><span>${esc(w.type||'')}</span></div>`).join('')) });
 
   // Impression 3D
   const pr=p.print&&Object.keys(p.print).length
     ? Object.entries(p.print).map(([k,v])=>`<div class="hr"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') : '';
-  if(pr) hudItems.push({ a:-105, el: hudCard('<h4>Impression 3D</h4>'+pr) });
+  if(pr && !tight) hudItems.push({ a:-105, el: hudCard('<h4>Impression 3D</h4>'+pr) });
 
   hud3d.hidden=false; document.body.classList.add('analysing');
   updatePartHUD();
