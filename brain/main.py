@@ -42,6 +42,12 @@ except ImportError:
 BRAIN_MODE = os.environ.get("BRAIN_MODE", "local")
 
 app = FastAPI(title="Cerveau ARIA")
+
+# Les meshes haute définition pèsent ~48 Mo bruts mais se compressent de 60 %.
+# Le navigateur décompresse tout seul : même détail, transfert deux fois et
+# demie plus léger.
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=2048)
 brain = Brain()
 
 # Sert les modèles 3D imprimables (STL) pour la visionneuse de pièces réelles.

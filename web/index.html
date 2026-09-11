@@ -728,6 +728,9 @@ const URDF_PART = { base_link:'base', Link_1:'yaw', Link_2:'upper', Link_3:'elbo
                     Link_4:'forearm', Link_5:'wrist' };
 let urdfRoot=null, urdfJoints={}, urdfLinks={}, urdfOn=false, urdfLoading=false;
 let urdfEyeHost=null;
+// Haute définition = les vrais meshes (1 M de triangles, ~19 Mo compressés).
+// Allégé = les meshes de collision (6,6 Mo), utile si le téléphone rame.
+let urdfHiRes = true;
 
 // URDF : rpy est une rotation d'axes FIXES Rz(yaw)·Ry(pitch)·Rx(roll).
 // Dans three.js c'est l'ordre 'ZYX' (sinon l'assemblage part de travers).
@@ -758,7 +761,8 @@ async function loadURDF(){
     urdfLinks[name] = g;
     const mesh = l.querySelector('visual > geometry > mesh');
     if(!mesh || name === 'base_link') return;   // la planche de montage : notre socle fait déjà le travail
-    const file = mesh.getAttribute('filename');
+    let file = mesh.getAttribute('filename');
+    if(urdfHiRes) file = file.replace('_col.STL', '.STL');   // version détaillée
     const vo = l.querySelector('visual > origin');
     const xyz = numList(vo && vo.getAttribute('xyz'), [0,0,0]);
     const rpy = numList(vo && vo.getAttribute('rpy'), [0,0,0]);
@@ -823,6 +827,21 @@ async function loadURDF(){
   urdfLoading = false;
   log('etat','vrai Moveo chargé ('+Object.keys(urdfJoints).length+' articulations)');
   return urdfRoot;
+}
+
+function disposeURDF(){
+  if(!urdfRoot) return;
+  urdfRoot.traverse(o=>{ if(o.isMesh && o.geometry) o.geometry.dispose(); });
+  root.remove(urdfRoot);
+  urdfRoot=null; urdfJoints={}; urdfLinks={}; urdfEyeHost=null;
+}
+async function setQuality(hi){
+  if(hi === urdfHiRes) return;
+  urdfHiRes = hi;
+  const was = urdfOn;
+  if(urdfRoot){ [eyePod, eye, glowSpr, eyeLight].forEach(x=>{ if(x) wristG.add(x); }); disposeURDF(); }
+  log('etat', 'qualité: ' + (hi ? 'détaillée' : 'allégée'));
+  if(was) await setURDF(true);
 }
 
 function setJoint(name, angle){
@@ -1276,9 +1295,15 @@ function frame(now){
       + (REDUCED ? 0 : Math.sin(clock*1.3)*0.04);
     for(const k of fingers) k.rotation.z = grip;
     if(urdfOn){
-      const g = Math.max(0, Math.min(1, (grip + 0.1) / 0.45));   // 0 ouvert -> 1 serré
-      setJoint('Gripper_Servo_Gear_Joint',  g * 1.2);
-      setJoint('Gripper_Idol_Gear_Joint',  -g * 1.2);
+      // La pince est une timonerie : si on ne tourne que les deux pignons, les
+      // bras de renvoi restent en place et les pièces semblent flotter.
+      const a = Math.max(0, Math.min(1, (grip + 0.1) / 0.45)) * 0.5;
+      setJoint('Gripper_Servo_Gear_Joint',       a);
+      setJoint('Pivot_Arm_Gripper_Servo_Joint',  a);
+      setJoint('Gripper_Idol_Gear_Joint',       -a);
+      setJoint('Pivot_Arm_Gripper_Idol_Joint',  -a);
+      // les embouts restent à leur position d'origine : les faire tourner
+      // les détache visuellement du reste de la timonerie
     }
   }
 
@@ -1316,11 +1341,48 @@ function showHoverLabel(x,y,id){ const p=partById(id); if(!p){ hideHoverLabel();
 function hideHoverLabel(){ if(hlabel) hlabel.hidden=true; }
 
 let dragging=false, lastX=0, lastY=0, moved=0;
+/* Navigation : 1 doigt (ou souris) = tourner, 2 doigts = pincer pour zoomer et
+   glisser pour se déplacer. Sans ça, sur téléphone il n'y a pas de zoom du tout
+   puisque la molette n'existe pas. */
+const ptrs = new Map();
+let pinchDist = 0, pinchX = 0, pinchY = 0;
+const ZMIN = 2.0, ZMAX = 40;
+function zoomBy(f){ orbit.r = Math.max(ZMIN, Math.min(ZMAX, orbit.r * f)); }
+function panBy(dx, dy){                       // déplace la cible dans le plan écran
+  const right = new THREE.Vector3(), up = new THREE.Vector3(), fwd = new THREE.Vector3();
+  camera.matrixWorld.extractBasis(right, up, fwd);
+  const k = orbit.r * 0.0018;
+  orbit.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+  orbit.target.y = Math.max(0, Math.min(10, orbit.target.y));
+}
+function twoFingerState(){
+  const a = [...ptrs.values()];
+  return { d: Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y),
+           x: (a[0].x+a[1].x)/2, y: (a[0].y+a[1].y)/2 };
+}
 canvas.addEventListener('pointerdown', e=>{
-  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY; camTween=null; ensureAudio();   // reprise du contrôle + déblocage audio
-  canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  camTween=null; ensureAudio();                     // reprise du contrôle + déblocage audio
+  canvas.setPointerCapture(e.pointerId);
+  if(ptrs.size === 2){                              // passage à deux doigts
+    dragging = false;
+    const t = twoFingerState(); pinchDist = t.d; pinchX = t.x; pinchY = t.y;
+  } else if(ptrs.size === 1){
+    dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY;
+    canvas.classList.add('dragging');
+  }
 });
+canvas.addEventListener('pointercancel', e=>{ ptrs.delete(e.pointerId); if(ptrs.size<2) pinchDist=0; });
 canvas.addEventListener('pointermove', e=>{
+  if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(ptrs.size >= 2){                               // pincer = zoom, glisser = déplacer
+    const t = twoFingerState();
+    if(pinchDist > 0 && t.d > 0) zoomBy(pinchDist / t.d);
+    panBy(t.x - pinchX, t.y - pinchY);
+    pinchDist = t.d; pinchX = t.x; pinchY = t.y;
+    hideHoverLabel();
+    return;
+  }
   if(dragging){
     const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
     moved += Math.abs(dx)+Math.abs(dy);
@@ -1349,8 +1411,10 @@ canvas.addEventListener('pointermove', e=>{
 canvas.addEventListener('pointerleave', ()=>{ setHover(null); hideHoverLabel(); });
 function dt0(){ return 0.004; }
 canvas.addEventListener('pointerup', e=>{
+  const wasPinching = ptrs.size >= 2;
+  ptrs.delete(e.pointerId); if(ptrs.size < 2) pinchDist = 0;
   dragging=false; canvas.classList.remove('dragging');
-  if(moved < 6){ // clic simple
+  if(!wasPinching && moved < 6){ // clic simple
     const hit = pickHit(e.clientX, e.clientY);
     if(hit){ openPartSheet(hit.id, hit.point); return; }   // clic sur une pièce -> focus + fiche
     if(server.connected){ serverSend({type:'poke'}); }
@@ -1359,7 +1423,7 @@ canvas.addEventListener('pointerup', e=>{
 });
 canvas.addEventListener('wheel', e=>{
   e.preventDefault(); camTween=null;
-  orbit.r = Math.max(5, Math.min(22, orbit.r + Math.sign(e.deltaY)*0.8));
+  zoomBy(e.deltaY > 0 ? 1.12 : 1/1.12);
 }, {passive:false});
 
 /* Dock */
@@ -1465,12 +1529,11 @@ function openCatalogue(){
   const groups=[['impression','À imprimer 3D'],['electronique','Électronique'],['achat','À acheter']];
   let h = `<div class="sheet-head"><h2>Catalogue des pièces</h2><button class="x" data-act="close">✕</button></div><div class="sheet-body">`;
   h += `<div class="ronote" style="color:var(--muted);border-color:var(--line);background:rgba(255,255,255,.03)">Fiches, photos et PDF enregistrés ${catalogBackend?'sur le serveur (/data)':'dans ce navigateur'}.</div>`;
-  if(assemblyOn && !inArtifact){
-    h += `<div class="blk"><h3>Vue réelle - modules affichés</h3><div class="modtog">`;
-    for(const m of MODULES)
-      h += `<label class="modrow"><input type="checkbox" data-mod="${m.id}"${hiddenModules.has(m.id)?'':' checked'}><span>${esc(m.label)}</span></label>`;
-    h += `<label class="modrow"><input type="checkbox" data-detail${showDetail?' checked':''}><span>Pièces de détail (flasques, plaques...)</span></label>`;
-    h += `</div></div>`;
+  if(urdfOn && !inArtifact){
+    h += `<div class="blk"><h3>Vue réelle - qualité</h3><div class="modtog">`;
+    h += `<label class="modrow"><input type="radio" name="q" data-q="hi"${urdfHiRes?' checked':''}><span>Détaillée · vraies pièces, 1 M de triangles</span></label>`;
+    h += `<label class="modrow"><input type="radio" name="q" data-q="lo"${urdfHiRes?'':' checked'}><span>Allégée · plus fluide sur téléphone</span></label>`;
+    h += `</div><span class="hlp">Le détail se télécharge une fois puis reste en cache.</span></div>`;
   }
   for(const [cat,label] of groups){
     const items = CATALOG.filter(p=>p.category===cat);
@@ -1484,6 +1547,9 @@ function openCatalogue(){
   h += `<div class="blk"><button class="filebtn" data-act="reset" style="width:100%;justify-content:center;color:var(--dim)">↺ Réinitialiser au catalogue de référence</button></div>`;
   h += `</div>`;
   sheetEl.innerHTML = h; sheetEl.classList.add('open');
+  sheetEl.querySelectorAll('input[data-q]').forEach(rb=>rb.addEventListener('change',()=>{
+    if(rb.checked) setQuality(rb.getAttribute('data-q') === 'hi');
+  }));
   sheetEl.querySelectorAll('input[data-mod]').forEach(cb=>cb.addEventListener('change',()=>{
     const id=cb.getAttribute('data-mod');
     if(cb.checked) hiddenModules.delete(id); else hiddenModules.add(id);
