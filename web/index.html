@@ -379,6 +379,7 @@
     <button class="act" data-cmd="parts"><span class="ic">🧩</span>Pièces</button>
     <button class="act" id="asmBtn" data-cmd="assemble" hidden><span class="ic">🦾</span>Vrai Moveo</button>
     <button class="act" id="memBtn" data-cmd="memory" hidden><span class="ic">🧠</span>Mémoire</button>
+    <button class="act" id="freezeBtn" data-cmd="freeze"><span class="ic">❄</span>Figer</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
     <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
@@ -725,7 +726,10 @@ const URDF_DRIVE = { Joint_1:'yaw', Joint_2:'shoulder', Joint_3:'elbow',
                      Joint_4:'wristRoll', Joint_5:'wristPitch' };
 // Quel link correspond à quelle pièce du catalogue (clic -> fiche)
 const URDF_PART = { base_link:'base', Link_1:'yaw', Link_2:'upper', Link_3:'elbow',
-                    Link_4:'forearm', Link_5:'wrist' };
+                    Link_4:'forearm', Link_5:'wrist',
+                    Gripper_Servo_Gear:'head', Gripper_Idol_Gear:'head',
+                    Tip_Gripper_Servo:'head',  Tip_Gripper_Idol:'head',
+                    Pivot_Arm_Gripper_Servo:'head', Pivot_Arm_Gripper_Idol:'head' };
 let urdfRoot=null, urdfJoints={}, urdfLinks={}, urdfOn=false, urdfLoading=false;
 let urdfEyeHost=null;
 // Positions de l'oeil dans le repère du bras stylisé. En mode URDF le repère du
@@ -777,7 +781,13 @@ async function loadURDF(){
         const m = new THREE.Mesh(geo, matU);
         m.position.set(xyz[0],xyz[1],xyz[2]);
         m.setRotationFromEuler(rpyToEuler(rpy));
-        if(URDF_PART[name]) m.userData.partId = URDF_PART[name];
+        if(URDF_PART[name]){
+          m.userData.partId = URDF_PART[name];
+          // partMeshes est bâti au démarrage : les pièces URDF arrivent après,
+          // il faut donc les y inscrire à la main sinon elles ne s'allument pas.
+          (partMeshes[m.userData.partId] || (partMeshes[m.userData.partId]=[])).push(m);
+        }
+        m.userData.mat0 = matU;
         m.userData.urdf = true;
         g.add(m); res();
       }, undefined, ()=>res());
@@ -849,6 +859,7 @@ async function loadURDF(){
 function disposeURDF(){
   if(!urdfRoot) return;
   urdfRoot.traverse(o=>{ if(o.isMesh && o.geometry) o.geometry.dispose(); });
+  for(const k in partMeshes) partMeshes[k] = partMeshes[k].filter(m=>!m.userData.urdf);
   root.remove(urdfRoot);
   urdfRoot=null; urdfJoints={}; urdfLinks={}; urdfEyeHost=null;
 }
@@ -902,12 +913,32 @@ root.traverse(o=>{ if(o.isMesh && o.userData.partId){ o.userData.mat0 = o.materi
 const hoverMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.5, metalness:0.5, roughness:0.3});
 const focusMat = new THREE.MeshStandardMaterial({color:0x0e2a33, emissive:0x34d3ee, emissiveIntensity:0.9, metalness:0.4, roughness:0.25});
 let hoverPart=null, focusPart=null, camTween=null, scanRings=[];
+/* Mode inspection : le bras s'arrête et tout s'efface sauf la pièce regardée. */
+let frozen=false, autoFroze=false;
+const dimMat = new THREE.MeshStandardMaterial({color:0x33404f, metalness:0.1, roughness:0.9,
+  transparent:true, opacity:0.16, depthWrite:false});
+function setIsolation(on, keepId){
+  root.traverse(o=>{
+    if(!o.isMesh || o.userData.partId==='eye') return;
+    const mine = keepId && o.userData.partId===keepId;
+    o.material = (on && !mine) ? dimMat : (o.userData.mat0 || o.material);
+  });
+  if(on && keepId) applyMat(keepId, focusMat);
+}
+function setFrozen(on, auto){
+  frozen = on; autoFroze = !!auto && on;
+  const b = document.getElementById('freezeBtn');
+  if(b){ b.classList.toggle('active', frozen);
+    b.innerHTML = frozen ? '<span class="ic">▶</span>Animer' : '<span class="ic">❄</span>Figer'; }
+  if(!auto) log('etat', frozen ? 'bras figé pour inspection' : 'bras réanimé');
+}
 const CAM_HOME = {theta:0.7, phi:1.06, r:15.5, target:new THREE.Vector3(0,3.4,0)};
 const lerp=(a,b,t)=>a+(b-a)*t;
 
 function meshesOf(id){ return partMeshes[id]||[]; }
 function applyMat(id, mat){ meshesOf(id).forEach(m=>{ m.material = mat || m.userData.mat0; }); }
 function setHover(id){
+  if(focusPart) return;                  // en inspection, le survol ne perturbe pas
   if(id===hoverPart) return;
   if(hoverPart && hoverPart!==focusPart) applyMat(hoverPart, null);
   hoverPart=id;
@@ -1290,6 +1321,7 @@ function frame(now){
 
   // Application, bornée aux vraies amplitudes du bras (guide TomKnox / Moveo)
   const cl=(v,a,b)=>v<a?a:(v>b?b:v);
+  if(!frozen){
   yawG.rotation.y      = cl(cur.yaw + off.yaw, JLIM.base[0], JLIM.base[1]);
   shoulderG.rotation.x = cl(cur.shoulder + off.shoulder + breathe, JLIM.shoulder[0], JLIM.shoulder[1]);
   elbowG.rotation.x    = cl(cur.elbow + off.elbow - breathe*0.5, JLIM.elbow[0], JLIM.elbow[1]);
@@ -1305,6 +1337,7 @@ function frame(now){
     setJoint('Joint_4', wristG.rotation.z);
     setJoint('Joint_5', wristG.rotation.x);
   }
+  }   // fin du bloc "pas figé"
 
   // Œil : couleur + pulsation + clignement
   const col = new THREE.Color(EYE_COLORS[brain.state]);
@@ -1464,6 +1497,7 @@ document.querySelectorAll('button.act').forEach(b=>{
     if(c==='parts'){ openCatalogue(); return; }
     if(c==='assemble'){ toggleAssembly(b); return; }
     if(c==='memory'){ openMemory(); return; }
+    if(c==='freeze'){ setFrozen(!frozen, false); return; }
     if(server.connected){ // en mode serveur, les boutons deviennent des messages au cerveau
       if(c==='greet') serverSend({type:'say', text:'bonjour'});
       else if(c==='ask') serverSend({type:'say', text:'une question ?'});
@@ -1552,7 +1586,12 @@ function pickPart(x,y){ const h=pickHit(x,y); return h ? h.id : null; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
 function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
-function closeSheet(){ disposeMiniViewer(); sheetEl.classList.remove('open'); setFocus(null); resetView(); sfx('close'); }
+function closeSheet(){
+  disposeMiniViewer(); sheetEl.classList.remove('open');
+  setIsolation(false, null); setFocus(null);
+  if(autoFroze) setFrozen(false, true);   // figé par nous -> on relâche
+  resetView(); sfx('close');
+}
 
 function openCatalogue(){
   disposeMiniViewer();
@@ -1592,7 +1631,8 @@ function openCatalogue(){
 function openPartSheet(id, point){
   const p=partById(id); if(!p){ openCatalogue(); return; }
   renderView(p); sheetEl.classList.add('open');
-  setFocus(id);
+  if(!frozen) setFrozen(true, true);     // on l'immobilise le temps de regarder
+  setFocus(id); setIsolation(true, id);
   const fp = point || partCenter(id);
   if(fp){ focusOn(fp); scanRing(fp); }
   sfx('focus');
