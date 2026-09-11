@@ -122,6 +122,14 @@ rem Ta memoire (data\) n'est jamais touchee. Pour sauter cette etape :
 rem   set ARIA_NO_UPDATE=1
 if exist selfupdate.py %PY% selfupdate.py
 
+rem Le lanceur lui-meme a ete mis a jour : selfupdate a laisse un script qui
+rem attend notre sortie, echange les fichiers et relance. On lui passe la main.
+if exist "%~dp0_maj.bat" (
+  echo       Lanceur mis a jour, je relance ARIA...
+  start "ARIA" cmd /c "%~dp0_maj.bat"
+  exit /b 0
+)
+
 rem --- 4/4 : serveur ------------------------------------------------------
 echo [4/4] Demarrage du serveur ARIA...
 echo.

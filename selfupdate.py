@@ -9,7 +9,9 @@ Ce qu'il ne touche JAMAIS :
   - run_local.bat    le lanceur est en train de s'exécuter : Windows lit le
                      fichier .bat au fur et à mesure, le remplacer en cours
                      de route fait sauter l'exécution n'importe où. On le
-                     dépose à côté et on prévient.
+                     dépose en .new et on écrit _maj.bat, qui attend la sortie
+                     du lanceur, échange les fichiers et relance. Aucun geste
+                     manuel.
 
 Hors ligne, dépôt injoignable, n'importe quel pépin : on ne casse rien, on
 laisse l'app démarrer avec ce qu'elle a déjà.
@@ -32,6 +34,7 @@ ZIP = "https://codeload.github.com/%s/zip/refs/heads/%s" % (REPO, BRANCH)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STAMP = os.path.join(ROOT, ".aria-version")
+SWAP = os.path.join(ROOT, "_maj.bat")
 
 # Jamais écrasés. `data` porte la mémoire, `run_local.bat` est en cours
 # d'exécution pendant qu'on tourne.
@@ -106,9 +109,31 @@ def _apply(zf: zipfile.ZipFile) -> list[str]:
     return deferred
 
 
+def _write_swap_helper(deferred: list[str]) -> None:
+    """Le lanceur ne peut pas se remplacer pendant qu'il tourne : Windows lit
+    un .bat au fil de l'eau. On ecrit donc un petit script qui attend notre
+    sortie, echange les fichiers et relance. Plus aucun geste manuel."""
+    lines = ["@echo off", "timeout /t 3 /nobreak >nul"]
+    for rel in deferred:
+        lines.append('move /y "%s" "%s" >nul'
+                     % (os.path.join(ROOT, rel + ".new"), os.path.join(ROOT, rel)))
+    lines.append('cd /d "%s"' % ROOT)
+    lines.append('call "%s"' % os.path.join(ROOT, "run_local.bat"))
+    try:
+        with open(SWAP, "w", encoding="ascii", errors="replace", newline="\r\n") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+
+
 def main() -> int:
     if os.environ.get("ARIA_NO_UPDATE"):
         return 0
+    # Reste d'un echange precedent : sans ca run_local.bat relancerait en boucle.
+    try:
+        os.remove(SWAP)
+    except OSError:
+        pass
     try:
         latest = _latest()
     except Exception as e:
@@ -145,9 +170,10 @@ def main() -> int:
         pass
 
     print("      mise a jour appliquee (%s)." % latest[:7])
-    for rel in deferred:
-        print("      NOTE: %s a change. Ferme cette fenetre, remplace" % rel)
-        print("            %s par %s.new, puis relance." % (rel, rel))
+    if deferred:
+        _write_swap_helper(deferred)
+        print("      le lanceur a change (%s), il sera echange au redemarrage."
+              % ", ".join(deferred))
     return 0
 
 
