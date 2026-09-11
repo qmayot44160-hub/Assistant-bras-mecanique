@@ -430,6 +430,7 @@
     <button class="act" id="freezeBtn" data-cmd="freeze"><span class="ic">❄</span>Figer</button>
     <button class="act" data-cmd="sleep"><span class="ic">🌙</span>Repos</button>
     <button class="act" id="soundBtn"><span class="ic">🔊</span>Son</button>
+    <button class="act" id="quitBtn" hidden><span class="ic">⏻</span>Éteindre</button>
     <button class="act" id="voiceBtn"><span class="ic">🗣</span>Sa voix</button>
     <button class="act" id="micBtn"><span class="ic">🎙</span>Micro</button>
     <button class="act" id="goldBtn"><span class="ic">🟡</span>Or</button>
@@ -1211,6 +1212,22 @@ function log(layer, msg){
   row.querySelector('.msg').textContent = msg;
   logEl.prepend(row);
   while(logEl.children.length>40) logEl.removeChild(logEl.lastChild);
+}
+
+/* Éteindre ARIA depuis sa page : lancée par ARIA.vbs elle n'a plus de
+   fenêtre, donc plus de Ctrl+C. Seulement sur cette machine : depuis le
+   téléphone, le serveur refuse de toute façon. */
+const quitBtn = document.getElementById('quitBtn');
+if(quitBtn && !inArtifact && ['127.0.0.1','localhost','::1'].includes(location.hostname)){
+  quitBtn.hidden = false;
+  quitBtn.addEventListener('click', async ()=>{
+    if(!confirm("Éteindre ARIA ? Sa mémoire est déjà enregistrée.")) return;
+    quitBtn.disabled = true;
+    log('etat', 'extinction...');
+    try{ await fetch('/api/shutdown', {method:'POST'}); }catch(e){}
+    think('À tout à l\'heure.');
+    setTimeout(()=>{ document.body.style.opacity = '.35'; }, 300);
+  });
 }
 
 /* ---------- Voix ----------

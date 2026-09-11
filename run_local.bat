@@ -21,7 +21,7 @@ if not "%ARIA_HOST%"=="127.0.0.1" if "%ARIA_PASSWORD%"=="" (
   echo     et deposer des fichiers sur ce PC.
   echo.
   echo     Lance run_reseau.bat, ou definis ARIA_PASSWORD toi-meme.
-  pause
+  call :hold
   exit /b 1
 )
 
@@ -38,7 +38,7 @@ if not exist "%~dp0.wtest" (
   echo       xcopy /e /i /y "%~dp0." "%USERPROFILE%\ARIA"
   echo       cd /d "%USERPROFILE%\ARIA"
   echo       run_local.bat
-  pause
+  call :hold
   exit /b 1
 )
 del "%~dp0.wtest" >nul 2>nul
@@ -65,7 +65,7 @@ where ollama >nul 2>nul
 if errorlevel 1 (
   echo [X] Ollama introuvable.
   echo     Installe-le depuis https://ollama.com/download puis relance ce script.
-  pause
+  call :hold
   exit /b 1
 )
 
@@ -91,7 +91,7 @@ for /l %%i in (1,1,30) do (
 )
 echo [X] Ollama n'a pas demarre en 30 s.
 echo     Ouvre l'application Ollama a la main, puis relance ce script.
-pause
+call :hold
 exit /b 1
 :ollama_ok
 echo       OK.
@@ -106,7 +106,7 @@ echo       absent, telechargement ^(quelques Go, une seule fois^)...
 ollama pull %OLLAMA_MODEL%
 if errorlevel 1 (
   echo [X] Telechargement echoue. Verifie ta connexion, puis relance.
-  pause
+  call :hold
   exit /b 1
 )
 goto model_done
@@ -139,9 +139,16 @@ echo   dans la VRAM. Ensuite c'est rapide.
 echo.
 
 rem Ouvre la page tout seul une fois le serveur debout.
-start "" /min cmd /c "timeout /t 6 /nobreak >nul & start "" http://127.0.0.1:8000"
+if not "%ARIA_NO_BROWSER%"=="1" start "" /min cmd /c "timeout /t 6 /nobreak >nul & start "" http://127.0.0.1:8000"
 
 %PY% -m uvicorn brain.main:app --host %ARIA_HOST% --port 8000
+call :hold
+exit /b 0
+
+rem Lance depuis ARIA.vbs (sans fenetre), un "pause" bloquerait pour
+rem toujours un processus invisible. On saute l'attente dans ce cas.
+:hold
+if "%ARIA_SILENT%"=="1" exit /b 0
 pause
 exit /b 0
 
@@ -149,5 +156,5 @@ exit /b 0
 echo [X] Python introuvable.
 echo     Installe Python 3 depuis https://www.python.org/downloads/
 echo     ^(coche "Add python.exe to PATH" pendant l'installation^) puis relance.
-pause
+call :hold
 exit /b 1

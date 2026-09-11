@@ -17,7 +17,7 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, PlainTextResponse
 
 # Le corps 3D vit dans web/index.html, à la racine du repo (un niveau au-dessus).
@@ -151,6 +151,34 @@ async def _start_loop() -> None:
                 await hub.broadcast(events)
 
     asyncio.create_task(life())
+
+
+@app.get("/favicon.ico")
+async def favicon() -> FileResponse:
+    ico = WEB_INDEX.parent / "aria.ico"
+    if not ico.exists():
+        raise HTTPException(404, "pas d'icône")
+    return FileResponse(ico, media_type="image/x-icon")
+
+
+@app.post("/api/shutdown")
+async def api_shutdown(request: Request) -> dict:
+    """Éteindre ARIA depuis sa propre page.
+
+    Lancée par ARIA.vbs, elle tourne sans fenêtre : il n'y a plus de Ctrl+C.
+    Réservé aux requêtes venant de cette machine, pour qu'un téléphone
+    connecté de l'extérieur ne puisse pas la couper d'un doigt qui glisse.
+    """
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1"):
+        raise HTTPException(403, "extinction possible seulement depuis ce PC")
+
+    async def bye() -> None:
+        await asyncio.sleep(0.4)      # laisse la réponse partir
+        os._exit(0)
+
+    asyncio.create_task(bye())
+    return {"ok": True}
 
 
 @app.get("/health")
