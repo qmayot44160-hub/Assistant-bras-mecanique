@@ -151,7 +151,8 @@ async def on_say(text: str) -> list[dict]:
         # Repli scripté : on le dit, sinon on croit qu'ARIA est bête alors que
         # c'est l'appel au cerveau qui a échoué (clé, réseau, quota...).
         if BRAIN_MODE in ("claude", "local"):
-            why = ai_layer.last_error() if BRAIN_MODE == "claude" else None
+            why = (ai_layer.last_error() if BRAIN_MODE == "claude"
+                   else local_brain.last_error())
             events.append({"type": "log", "layer": "etat",
                            "msg": "cerveau " + BRAIN_MODE + " indisponible -> repli réflexes"
                                   + (" (" + why + ")" if why else "")})
@@ -280,8 +281,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
     # état initial pour le nouvel arrivant
     await ws.send_text(json.dumps(brain.snapshot()))
     await ws.send_text(json.dumps({"type": "log", "layer": "etat", "msg": "corps connecté"}))
+    # En local, dire tout de suite ce qui cloche : sinon on croit ARIA bête
+    # alors que c'est Ollama qui n'est pas lancé ou le modèle qui manque.
+    _st = local_brain.status()
+    _local_msg = ("cerveau local prêt (" + _st["model"] + ")" if _st["ready"]
+                  else "cerveau local en chargement..." if _st["loading"]
+                  else "cerveau local indisponible -> " + (_st["error"] or "?"))
     _mode_msg = {
-        "local": "cerveau local " + ("prêt" if local_brain.available() else "en chargement..."),
+        "local": _local_msg,
         "claude": "couche IA Claude " + ("active" if ai_layer.available() else "(clé absente -> réflexes)"),
         "scripted": "réflexes scriptés",
     }.get(BRAIN_MODE, BRAIN_MODE)
