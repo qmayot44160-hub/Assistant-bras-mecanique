@@ -1029,6 +1029,8 @@ function updateFx(dt){
     orbit.r=lerp(camTween.from.r,camTween.to.r,e);
     orbit.target.lerpVectors(camTween.from.target,camTween.to.target,e);
     if(p>=1) camTween=null;
+  } else {
+    lockTarget(dt);            // hors transition, la cible reste collée au bras
   }
   if(focusPart) focusMat.emissiveIntensity = 0.7 + 0.45*Math.max(0,Math.sin(clock*3.5));
   if(scanRings.length) scanRings=scanRings.filter(s=>{
@@ -1455,12 +1457,22 @@ const ptrs = new Map();
 let pinchDist = 0, pinchX = 0, pinchY = 0;
 const ZMIN = 2.0, ZMAX = 40;
 function zoomBy(f){ orbit.r = Math.max(ZMIN, Math.min(ZMAX, orbit.r * f)); }
-function panBy(dx, dy){                       // déplace la cible dans le plan écran
-  const right = new THREE.Vector3(), up = new THREE.Vector3(), fwd = new THREE.Vector3();
-  camera.matrixWorld.extractBasis(right, up, fwd);
-  const k = orbit.r * 0.0018;
-  orbit.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
-  orbit.target.y = Math.max(0, Math.min(10, orbit.target.y));
+/* Présentoir tournant : la caméra est verrouillée sur le bras (ou sur la pièce
+   analysée). On ne déplace jamais la cible à la main, sinon on perd l'objet de
+   vue, ce qui est vite ingérable au doigt. */
+const _bc = new THREE.Vector3(), _bbox = new THREE.Box3();
+function bodyCenter(){
+  _bbox.makeEmpty();
+  const src = (urdfOn && urdfRoot) ? urdfRoot : root;
+  src.traverse(o=>{ if(o.isMesh && o.visible && o.userData.partId!=='eye') _bbox.expandByObject(o); });
+  if(_bbox.isEmpty()) return _bc.set(0, 3, 0);
+  return _bbox.getCenter(_bc);
+}
+function lockTarget(dt){
+  const want = focusPart ? (partCenter(focusPart) || bodyCenter()) : bodyCenter();
+  if(!want) return;
+  const k = 1 - Math.pow(0.002, dt);          // recentrage doux
+  orbit.target.lerp(want, k);
 }
 function twoFingerState(){
   const a = [...ptrs.values()];
@@ -1485,16 +1497,17 @@ canvas.addEventListener('pointermove', e=>{
   if(ptrs.size >= 2){                               // pincer = zoom, glisser = déplacer
     const t = twoFingerState();
     if(pinchDist > 0 && t.d > 0) zoomBy(pinchDist / t.d);
-    panBy(t.x - pinchX, t.y - pinchY);
-    pinchDist = t.d; pinchX = t.x; pinchY = t.y;
+    pinchDist = t.d; pinchX = t.x; pinchY = t.y;   // pincer zoome, sans déplacer
     hideHoverLabel();
     return;
   }
   if(dragging){
     const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
     moved += Math.abs(dx)+Math.abs(dy);
-    orbit.theta -= dx*0.006;
-    orbit.phi = Math.max(0.3, Math.min(1.5, orbit.phi - dy*0.006));
+    orbit.theta -= dx*0.0085;                       // tour complet, sans butée
+    // 0.12 à 3.02 : on peut passer au-dessus et en dessous, en évitant les
+    // pôles exacts où lookAt bascule brutalement.
+    orbit.phi = Math.max(0.12, Math.min(3.02, orbit.phi - dy*0.0085));
     hideHoverLabel();
     return;
   }
