@@ -859,7 +859,8 @@ async function loadURDF(){
     const ax = numList(a && a.getAttribute('xyz'), [0,0,1]);
     const lim = j.querySelector('limit');
     urdfJoints[j.getAttribute('name')] = {
-      hinge, axis: new THREE.Vector3(ax[0],ax[1],ax[2]).normalize(),
+      hinge, node: fixed,                      // repère figé du joint : ancrage des câbles
+      axis: new THREE.Vector3(ax[0],ax[1],ax[2]).normalize(),
       lower: lim ? parseFloat(lim.getAttribute('lower')) : -Math.PI,
       upper: lim ? parseFloat(lim.getAttribute('upper')) :  Math.PI,
       type: j.getAttribute('type'),
@@ -867,6 +868,21 @@ async function loadURDF(){
   });
 
   await Promise.all(pending);
+
+  // Encombrement propre de chaque link (ses maillages seuls, pas ses enfants) :
+  // c'est ce qui dit au câble à quelle distance passer pour longer la coque
+  // au lieu de la traverser.
+  for(const name in urdfLinks){
+    // expandByObject travaille en monde : ici on veut le repère du link, donc
+    // on compose à la main avec la matrice locale du maillage.
+    const bb = new THREE.Box3();
+    urdfLinks[name].children.forEach(c=>{
+      if(!c.isMesh || !c.geometry) return;
+      c.geometry.computeBoundingBox(); c.updateMatrix();
+      bb.union(c.geometry.boundingBox.clone().applyMatrix4(c.matrix));
+    });
+    if(!bb.isEmpty()) urdfLinks[name].userData.bb = bb;
+  }
 
   // 3) Z-up (convention robotique) -> Y-up (three.js), puis mise à l'échelle
   const base = urdfLinks['base_link'];
@@ -898,6 +914,7 @@ async function loadURDF(){
   // on le recentre sur l'origine et on le pose au sol.
   const c = box.getCenter(new THREE.Vector3());
   urdfRoot.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+  urdfRoot.userData.yFloor = box.min.y;                // en mètres, repère du robot
   urdfEyeHost.scale.setScalar(1/s);                   // l'oeil garde sa taille
   urdfLoading = false;
   log('etat','vrai Moveo chargé ('+Object.keys(urdfJoints).length+' articulations)');
@@ -909,7 +926,7 @@ function disposeURDF(){
   urdfRoot.traverse(o=>{ if(o.isMesh && o.geometry) o.geometry.dispose(); });
   for(const k in partMeshes) partMeshes[k] = partMeshes[k].filter(m=>!m.userData.urdf);
   root.remove(urdfRoot);
-  urdfRoot=null; urdfJoints={}; urdfLinks={}; urdfEyeHost=null;
+  urdfRoot=null; urdfJoints={}; urdfLinks={}; urdfEyeHost=null; cableMesh=[];
 }
 async function setQuality(hi){
   if(hi === urdfHiRes) return;
@@ -924,6 +941,108 @@ function setJoint(name, angle){
   const j = urdfJoints[name]; if(!j) return;
   if(j.type !== 'continuous') angle = Math.max(j.lower, Math.min(j.upper, angle));
   j.hinge.quaternion.setFromAxisAngle(j.axis, angle);
+}
+
+/* ---------- Câblage : la gaine moteur qui longe le bras ----------
+   Le vrai Moveo tire les fils des NEMA depuis le socle jusqu'au poignet. Une
+   géométrie figée ne peut pas suivre le bras : on relève la position réelle
+   des articulations à chaque rafraîchissement et on retrace le tube.
+   Ancrage sur le repère "fixed" de chaque joint : il ne tourne pas avec l'axe,
+   donc le câble reste collé à la pièce porteuse au lieu de pivoter avec elle. */
+// Deux torons : la grosse gaine des NEMA, et un fil de servo plus fin qui la
+// double. Un seul tube faisait faux, deux suffisent à faire faisceau.
+// `pad` = jeu laissé entre la coque de la pièce et l'axe du tube.
+// hug < 1 : la boîte englobante surestime toujours une pièce tournée, on
+// rattrape pour que la gaine lèche la coque au lieu de flotter à côté.
+const CABLE = { seg:72, radial:7, every:0.07, hug:0.9 };
+const CABLE_STRANDS = [
+  { r:0.0070, pad:0.013, sag:0.013 },
+  { r:0.0040, pad:0.004, sag:0.024 },
+];
+const CABLE_CHAIN = ['Joint_1','Joint_2','Joint_3','Joint_4','Joint_5'];
+let cableMesh=[], cableAcc=0;
+
+// Distance entre l'origine du link et sa surface, dans la direction `dirW`
+// (monde). La boîte tourne avec la pièce : le câble reste dehors quel que
+// soit l'angle de l'articulation.
+function linkReach(link, dirW){
+  const bb = link && link.userData.bb; if(!bb) return 0;
+  const inv = new THREE.Matrix4().copy(link.matrixWorld).invert();
+  const o = new THREE.Vector3().applyMatrix4(inv);
+  const d = new THREE.Vector3().copy(dirW).applyMatrix4(inv).sub(o).normalize();
+  const c = bb.getCenter(new THREE.Vector3()), h = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+  return c.dot(d) + Math.abs(h.x*d.x) + Math.abs(h.y*d.y) + Math.abs(h.z*d.z);
+}
+
+// Les points sont rendus dans le repère du robot (mètres URDF), pas en monde :
+// urdfRoot porte l'échelle, un tube enfant hérite donc du bon gabarit.
+function cablePath(sp){
+  if(!urdfRoot) return null;
+  const j2 = urdfJoints['Joint_2']; if(!j2) return null;
+  urdfRoot.updateWorldMatrix(true, true);
+  const inv = new THREE.Matrix4().copy(urdfRoot.matrixWorld).invert();
+  const toLocal = w => w.clone().applyMatrix4(inv);
+  // conversion d'une direction : deux points, puis différence (l'échelle saute)
+  const ref = new THREE.Vector3(); urdfRoot.getWorldPosition(ref);
+  const dirLocal = d => toLocal(ref.clone().add(d)).sub(toLocal(ref)).normalize();
+
+  // Le côté du bras = axe de l'épaule. Perpendiculaire au plan de travail,
+  // il tourne avec la base : la gaine reste toujours sur la même joue.
+  const q = new THREE.Quaternion(); j2.node.getWorldQuaternion(q);
+  const sideW = j2.axis.clone().applyQuaternion(q).normalize();
+  const side = dirLocal(sideW);
+  const down = dirLocal(new THREE.Vector3(0,-1,0));
+
+  const anchors = []; let reach0 = 0;
+  CABLE_CHAIN.forEach((name, k)=>{
+    const j = urdfJoints[name]; if(!j) return;
+    // L'origine du joint est commune à la charnière et au link mené : on prend
+    // l'encombrement du link mené, celui que le câble va longer ensuite.
+    const child = j.hinge.children[0];
+    const reach = Math.max(0.02, linkReach(child, sideW)*CABLE.hug) + sp.pad;
+    if(!k) reach0 = reach;
+    const w = new THREE.Vector3(); j.node.getWorldPosition(w);
+    anchors.push(toLocal(w).addScaledVector(side, reach));
+  });
+  const l5 = urdfLinks['Link_5'];
+  if(l5){
+    const w = new THREE.Vector3(); l5.getWorldPosition(w);
+    anchors.push(toLocal(w).addScaledVector(side, Math.max(0.02, linkReach(l5, sideW)*CABLE.hug)*0.6 + sp.pad));
+  }
+  if(anchors.length < 2) return null;
+
+  // Sortie de socle : la gaine plonge le long du fût jusqu'au plateau au lieu
+  // de finir en l'air, et reste dehors (reach0 = demi-largeur de la tourelle).
+  const yF = urdfRoot.userData.yFloor;
+  const drop = typeof yF === 'number' ? Math.max(0.03, anchors[0].y - yF - 0.004) : 0.1;
+  const foot = anchors[0].clone().addScaledVector(down, drop).addScaledVector(side, reach0*0.25);
+  const pts = [foot, anchors[0].clone().addScaledVector(down, drop*0.5).addScaledVector(side, reach0*0.12)];
+
+  // Boucle de service entre deux ancrages : un peu de mou, un peu vers l'extérieur.
+  for(let i=0;i<anchors.length;i++){
+    pts.push(anchors[i]);
+    if(i === anchors.length-1) break;
+    const len = anchors[i].distanceTo(anchors[i+1]);
+    if(len < 0.02) continue;
+    pts.push(anchors[i].clone().lerp(anchors[i+1], 0.5)
+      .addScaledVector(down, sp.sag * Math.min(1, len/0.16))
+      .addScaledVector(side, sp.sag*0.5));
+  }
+  return pts;
+}
+
+function updateCables(){
+  CABLE_STRANDS.forEach((sp, i)=>{
+    const pts = cablePath(sp); if(!pts) return;
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.4);
+    const geo = new THREE.TubeGeometry(curve, CABLE.seg, sp.r, CABLE.radial, false);
+    if(cableMesh[i]){ cableMesh[i].geometry.dispose(); cableMesh[i].geometry = geo; return; }
+    const m = new THREE.Mesh(geo, matHose);
+    m.userData.urdf = true;       // exempté du basculement stylisé/réel
+    m.userData.mat0 = matHose;    // pour que l'isolement sache quoi rendre
+    m.castShadow = true;
+    cableMesh[i] = m; urdfRoot.add(m);
+  });
 }
 
 async function setURDF(on){
@@ -1397,6 +1516,16 @@ function frame(now){
     setJoint('Joint_5', wristG.rotation.x);
   }
   }   // fin du bloc "pas figé"
+
+  // Le câble se retrace après la pose. Figé : inutile de recalculer, sauf au
+  // tout premier passage où le tube n'existe pas encore.
+  if(urdfOn && urdfRoot){
+    cableAcc += dt;
+    // en mode économe (petit appareil / prefers-reduced-motion) on retrace
+    // beaucoup moins souvent : le tracé coûte une géométrie neuve à chaque fois.
+    const every = REDUCED ? 0.3 : CABLE.every;
+    if(!cableMesh.length || (!frozen && cableAcc > every)){ cableAcc = 0; updateCables(); }
+  }
 
   // Œil : couleur + pulsation + clignement
   const col = new THREE.Color(EYE_COLORS[brain.state]);
