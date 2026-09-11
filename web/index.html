@@ -240,6 +240,46 @@
     color:var(--cyan);background:rgba(10,16,22,.82);border:1px solid rgba(52,211,238,.5);padding:4px 10px;white-space:nowrap;
     box-shadow:0 0 16px rgba(52,211,238,.25);backdrop-filter:blur(4px);
     clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px)}
+  /* HUD d'analyse : anneaux + cartouches ancrés à la pièce, façon poste de pilotage */
+  .hud3d{position:fixed;inset:0;z-index:7;pointer-events:none}
+  /* en analyse, l'interface courante s'efface pour laisser la pièce respirer */
+  body.analysing .hud.brain,body.analysing .telemetry,body.analysing .hint{
+    opacity:.12;transition:opacity .3s}
+  body.analysing .hud.dock{opacity:.35;transition:opacity .3s}
+  body.analysing .hud.dock:hover{opacity:1}
+  .hud3d svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .hud3d .ringline{fill:none;stroke:var(--cyan);stroke-width:1}
+  .hud3d .tick{stroke:var(--cyan);stroke-width:1;opacity:.55}
+  .hud3d .lead{stroke:var(--cyan);stroke-width:1;opacity:.7;stroke-dasharray:3 3}
+  .hud3d .node{fill:var(--cyan)}
+  .hcard{position:absolute;pointer-events:auto;min-width:124px;max-width:212px;
+    background:rgba(7,12,19,.82);backdrop-filter:blur(9px);
+    border:1px solid rgba(52,211,238,.4);border-radius:9px;padding:7px 10px 8px;
+    box-shadow:0 0 22px rgba(52,211,238,.14);transform:translate(-50%,-50%);
+    /* l'opacité ne dépend PAS de l'animation : si celle-ci ne se joue pas
+       (mouvement réduit, appareil lent), le cartouche reste lisible. */
+    animation:hudin .26s cubic-bezier(.2,.8,.3,1) both}
+  @keyframes hudin{from{transform:translate(-50%,-50%) scale(.9)}
+                     to{transform:translate(-50%,-50%) scale(1)}}
+  .hcard h4{margin:0 0 5px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--cyan);font-weight:600}
+  .hcard .hr{display:flex;justify-content:space-between;gap:9px;font-size:11.5px;
+    line-height:1.45;color:var(--text)}
+  .hcard .hr span:last-child{color:var(--muted);text-align:right;flex:0 0 auto}
+  .hcard p{margin:0;font-size:11.5px;line-height:1.45;color:var(--text)}
+  .hcard.title{border-color:var(--cyan);box-shadow:0 0 26px rgba(52,211,238,.3)}
+  .hcard.title h4{font-size:12.5px;letter-spacing:.06em;color:#fff;text-transform:none;margin:0}
+  .hcard .cat{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--muted)}
+  .hcard button{margin-top:7px;width:100%;background:rgba(52,211,238,.14);color:var(--cyan);
+    border:1px solid rgba(52,211,238,.45);border-radius:7px;padding:5px 8px;font-size:11px;
+    font-family:var(--mono);letter-spacing:.05em;cursor:pointer}
+  .hcard button:hover{background:rgba(52,211,238,.26)}
+  .gold .hud3d .ringline,.gold .hud3d .tick,.gold .hud3d .lead{stroke:#f5b83d}
+  .gold .hud3d .node{fill:#f5b83d}
+  .gold .hcard{border-color:rgba(245,184,61,.42)}
+  .gold .hcard h4{color:#f5b83d}
+  @media (max-width:720px){ .hcard{max-width:168px;min-width:108px;padding:6px 8px}
+    .hcard p,.hcard .hr{font-size:10.5px} }
   .hlabel::before{content:'';position:absolute;left:-7px;top:50%;width:6px;height:1px;background:var(--cyan)}
   /* Panneaux : verre à coins biseautés + ligne d'accent */
   .statuspill,.brain,.dock{--cut:12px;border-color:rgba(52,211,238,.28);
@@ -319,6 +359,10 @@
 <div class="fx-scan" aria-hidden="true"></div>
 <div class="fx-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="hlabel" id="hlabel" hidden></div>
+<div class="hud3d" id="hud3d" hidden>
+  <svg id="hudSvg" aria-hidden="true"></svg>
+  <div class="hcards" id="hudCards"></div>
+</div>
 <div class="boot" id="boot"><div class="boot-ring"></div><div class="boot-t">A R I A</div><div class="boot-s">initialisation des systèmes</div></div>
 
 <svg class="fx-leader" id="leader" aria-hidden="true">
@@ -963,10 +1007,10 @@ function pickHit(x,y){
   const h=raycaster.intersectObjects(ms,false)[0];
   return h ? {id:h.object.userData.partId, point:h.point.clone()} : null;
 }
-function focusOn(worldPos){
+function focusOn(worldPos, dist){
   camTween={ t:0, dur:0.9,
     from:{theta:orbit.theta, phi:orbit.phi, r:orbit.r, target:orbit.target.clone()},
-    to:{theta:orbit.theta, phi:1.0, r:4.6, target:worldPos.clone()} };
+    to:{theta:orbit.theta, phi:1.0, r:(dist||4.6), target:worldPos.clone()} };
 }
 function resetView(){
   camTween={ t:0, dur:0.9,
@@ -1384,7 +1428,7 @@ function frame(now){
     s.target.z + s.r*Math.sin(s.phi)*Math.cos(s.theta)
   );
   camera.lookAt(s.target);
-  updateLeader(); updateTelemetry();
+  updateLeader(); updatePartHUD(); updateTelemetry();
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -1479,7 +1523,9 @@ canvas.addEventListener('pointerup', e=>{
   dragging=false; canvas.classList.remove('dragging');
   if(!wasPinching && moved < 6){ // clic simple
     const hit = pickHit(e.clientX, e.clientY);
-    if(hit){ openPartSheet(hit.id, hit.point); return; }   // clic sur une pièce -> focus + fiche
+    if(hit){ openPartHUD(hit.id, hit.point); return; }     // clic sur une pièce -> HUD d'analyse
+    if(hudPart){ closePartHUD(); setIsolation(false,null); setFocus(null);
+                 if(autoFroze) setFrozen(false,true); resetView(); return; }
     if(server.connected){ serverSend({type:'poke'}); }
     else { wake(true); log('reflexe','sollicité par contact'); setState('attentive'); brain.boredom = 0; }
   }
@@ -1587,7 +1633,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;',
 const CAT_LABEL = {impression:'à imprimer 3D', achat:'à acheter', electronique:'électronique'};
 function catColor(c){ return c==='impression'?'#34d3ee':c==='achat'?'#f5a623':'#38e08a'; }
 function closeSheet(){
-  disposeMiniViewer(); sheetEl.classList.remove('open');
+  disposeMiniViewer(); closePartHUD(); sheetEl.classList.remove('open');
   setIsolation(false, null); setFocus(null);
   if(autoFroze) setFrozen(false, true);   // figé par nous -> on relâche
   resetView(); sfx('close');
@@ -1630,6 +1676,7 @@ function openCatalogue(){
 
 function openPartSheet(id, point){
   const p=partById(id); if(!p){ openCatalogue(); return; }
+  closePartHUD();
   renderView(p); sheetEl.classList.add('open');
   if(!frozen) setFrozen(true, true);     // on l'immobilise le temps de regarder
   setFocus(id); setIsolation(true, id);
@@ -1992,6 +2039,139 @@ function updateTelemetry(){
 // Ligne de connexion pièce -> fiche (projection 3D -> écran)
 const _leader=document.getElementById('leader'), _lLine=document.getElementById('leaderLine'),
       _lDot=document.getElementById('leaderDot'), _lAnc=document.getElementById('leaderAnchor');
+/* ---------- HUD d'analyse : les infos flottent autour de la pièce ----------
+   Les cartouches sont du DOM positionné en projetant un point 3D de la pièce
+   à chaque image. L'anneau est dimensionné sur la sphère englobante réelle,
+   donc il colle à la pièce quel que soit le zoom. */
+const hud3d=document.getElementById('hud3d'), hudSvg=document.getElementById('hudSvg'),
+      hudCards=document.getElementById('hudCards');
+let hudPart=null, hudItems=[], hudT=0;
+
+function partSphere(id){
+  const ms=meshesOf(id).filter(m=>m.visible!==false);
+  if(!ms.length) return null;
+  const box=new THREE.Box3();
+  ms.forEach(m=>box.expandByObject(m));
+  if(box.isEmpty()) return null;
+  return { c: box.getCenter(new THREE.Vector3()),
+           r: Math.max(0.25, box.getSize(new THREE.Vector3()).length()*0.5) };
+}
+
+function hudCard(html, cls){
+  const d=document.createElement('div');
+  d.className='hcard'+(cls?' '+cls:''); d.innerHTML=html;
+  hudCards.appendChild(d); return d;
+}
+
+function openPartHUD(id, point){
+  const p=partById(id); if(!p){ openCatalogue(); return; }
+  closePartHUD();
+  hudPart=id;
+  if(!frozen) setFrozen(true, true);        // immobile le temps de l'analyse
+  setFocus(id); setIsolation(true, id);
+  const sph0=partSphere(id);
+  if(point){ focusOn(point, sph0 ? Math.max(3.6, sph0.r*3.4) : null); scanRing(point); }
+  sfx('focus');
+
+  const cat=p.category||'achat';
+  // Cartouche titre
+  hudItems.push({ a:-150, el: hudCard(
+    `<h4>${esc(p.name)}</h4><div class="cat">${esc(CAT_LABEL[cat]||cat)}</div>`+
+    (p.role?`<p style="margin-top:6px">${esc(p.role)}</p>`:'')+
+    `<button data-act="full">FICHE COMPLÈTE</button>`, 'title') });
+
+  // Caractéristiques
+  const sp=p.specs&&Object.keys(p.specs).length
+    ? Object.entries(p.specs).map(([k,v])=>`<div class="hr"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') : '';
+  if(sp) hudItems.push({ a:-35, el: hudCard('<h4>Caractéristiques</h4>'+sp) });
+
+  // Composants
+  if(Array.isArray(p.components)&&p.components.length)
+    hudItems.push({ a:40, el: hudCard('<h4>Composants</h4>'+
+      p.components.slice(0,5).map(c=>`<div class="hr"><span>${esc(c.name)}</span><span>×${esc(c.qty==null?1:c.qty)}</span></div>`).join('')) });
+
+  // Fils & connecteurs
+  if(Array.isArray(p.wires)&&p.wires.length)
+    hudItems.push({ a:135, el: hudCard('<h4>Fils</h4>'+
+      p.wires.slice(0,4).map(w=>`<div class="hr"><span>${esc(w.from)} → ${esc(w.to)}</span><span>${esc(w.type||'')}</span></div>`).join('')) });
+
+  // Impression 3D
+  const pr=p.print&&Object.keys(p.print).length
+    ? Object.entries(p.print).map(([k,v])=>`<div class="hr"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') : '';
+  if(pr) hudItems.push({ a:-105, el: hudCard('<h4>Impression 3D</h4>'+pr) });
+
+  hud3d.hidden=false; document.body.classList.add('analysing');
+  updatePartHUD();
+}
+
+function closePartHUD(){
+  document.body.classList.remove('analysing');
+  hudItems.forEach(i=>i.el.remove()); hudItems=[];
+  hudSvg.innerHTML=''; hud3d.hidden=true; hudPart=null;
+}
+
+function svgEl(tag, attrs){
+  const e=document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function updatePartHUD(){
+  if(!hudPart){ return; }
+  const sph=partSphere(hudPart);
+  if(!sph){ hud3d.hidden=true; return; }
+  camera.updateMatrixWorld();
+  const W=window.innerWidth, H=window.innerHeight;
+  const c=sph.c.clone().project(camera);
+  if(c.z>1){ hud3d.hidden=true; return; }        // derrière la caméra
+  hud3d.hidden=false;
+  const sx=(c.x*0.5+0.5)*W, sy=(-c.y*0.5+0.5)*H;
+  // rayon à l'écran : on projette un point décalé du rayon réel
+  const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);
+  const e=sph.c.clone().addScaledVector(right, sph.r).project(camera);
+  const lim=Math.min(W,H);
+  const sr=Math.max(34, Math.min(lim*0.19, Math.hypot((e.x*0.5+0.5)*W-sx, (-e.y*0.5+0.5)*H-sy)));
+
+  hudSvg.innerHTML='';
+  hudT+=0.004;
+  // anneaux : un plein, deux arcs qui tournent lentement
+  hudSvg.appendChild(svgEl('circle',{cx:sx,cy:sy,r:sr,class:'ringline','stroke-opacity':.45}));
+  const R2=sr*1.22, a0=hudT, arc=(from,len,rad)=>{
+    const x1=sx+Math.cos(from)*rad, y1=sy+Math.sin(from)*rad;
+    const x2=sx+Math.cos(from+len)*rad, y2=sy+Math.sin(from+len)*rad;
+    return svgEl('path',{d:`M ${x1} ${y1} A ${rad} ${rad} 0 ${len>Math.PI?1:0} 1 ${x2} ${y2}`, class:'ringline'});
+  };
+  hudSvg.appendChild(arc(a0, 2.1, R2));
+  hudSvg.appendChild(arc(a0+Math.PI, 1.5, R2));
+  for(let i=0;i<12;i++){                                  // graduations
+    const a=a0*-0.6 + i/12*Math.PI*2;
+    hudSvg.appendChild(svgEl('line',{x1:sx+Math.cos(a)*(sr*1.34), y1:sy+Math.sin(a)*(sr*1.34),
+      x2:sx+Math.cos(a)*(sr*1.42), y2:sy+Math.sin(a)*(sr*1.42), class:'tick'}));
+  }
+  hudSvg.appendChild(svgEl('circle',{cx:sx,cy:sy,r:2.5,class:'node'}));
+
+  // cartouches disposés en couronne, tirés par un trait
+  const dist=sr*1.15+72;
+  hudItems.forEach(it=>{
+    const a=it.a*Math.PI/180;
+    let x=sx+Math.cos(a)*dist, y=sy+Math.sin(a)*dist*0.82;
+    const w=it.el.offsetWidth||150, h=it.el.offsetHeight||60;
+    x=Math.max(w/2+8, Math.min(W-w/2-8, x));            // reste à l'écran
+    y=Math.max(h/2+8, Math.min(H-h/2-8, y));
+    it.el.style.left=x+'px'; it.el.style.top=y+'px';
+    const dx=sx-x, dy=sy-y, L=Math.hypot(dx,dy)||1;
+    const ex=x+dx/L*(w/2+6), ey=y+dy/L*(h/2+6);          // bord du cartouche
+    const tx=sx-dx/L*sr*1.05, ty=sy-dy/L*sr*1.05;        // bord de l'anneau
+    hudSvg.appendChild(svgEl('line',{x1:ex,y1:ey,x2:tx,y2:ty,class:'lead'}));
+    hudSvg.appendChild(svgEl('circle',{cx:ex,cy:ey,r:2,class:'node'}));
+  });
+}
+
+hudCards.addEventListener('click', e=>{
+  const b=e.target.closest('[data-act="full"]'); if(!b||!hudPart) return;
+  const id=hudPart; closePartHUD(); openPartSheet(id);
+});
+
 function updateLeader(){
   if(!_leader) return;
   if(window.innerWidth<900 || !sheetEl.classList.contains('open') || !focusPart){ _leader.style.opacity=0; return; }
