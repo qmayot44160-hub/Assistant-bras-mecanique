@@ -79,9 +79,13 @@ goto model_done
 echo       deja installe.
 :model_done
 
-rem --- 3/4 : dependances Python -------------------------------------------
+rem --- 3/4 : dependances + mise a jour d'ARIA -----------------------------
 echo [3/4] Dependances Python...
 %PY% -m pip install --quiet --disable-pip-version-check -r requirements.txt
+echo       Mise a jour d'ARIA...
+rem Ta memoire (data\) n'est jamais touchee. Pour sauter cette etape :
+rem   set ARIA_NO_UPDATE=1
+if exist selfupdate.py %PY% selfupdate.py
 
 rem --- 4/4 : serveur ------------------------------------------------------
 echo [4/4] Demarrage du serveur ARIA...
